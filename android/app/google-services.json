@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "248608142094",
+    "project_id": "true-martial-arts",
+    "storage_bucket": "true-martial-arts.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:248608142094:android:b67d2263e81fca015fdd5f",
+        "android_client_info": {
+          "package_name": "com.example.true_martial_arts_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSDMrKH6puAP3_9WI08tXT8UWRnB7E9yI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:248608142094:android:bdbd0b0c2355d51f5fdd5f",
+        "android_client_info": {
+          "package_name": "com.truemartialarts.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSDMrKH6puAP3_9WI08tXT8UWRnB7E9yI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
