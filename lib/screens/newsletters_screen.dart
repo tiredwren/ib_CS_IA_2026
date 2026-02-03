@@ -24,7 +24,7 @@ class Newsletters extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
-          color: const Color(0xFFDC143C),
+          color: const Color(0xFFFF0000),
           child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -212,7 +212,7 @@ class Newsletters extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFDC143C),
+                      color: const Color(0xFFFF0000),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(

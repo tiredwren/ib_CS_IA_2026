@@ -124,15 +124,15 @@ class _CalendarState extends State<Calendar> {
               },
               calendarStyle: CalendarStyle(
                 todayDecoration: BoxDecoration(
-                  color: const Color(0xFFDC143C).withOpacity(0.5),
+                  color: const Color(0xFFFF0000).withOpacity(0.5),
                   shape: BoxShape.circle,
                 ),
                 selectedDecoration: const BoxDecoration(
-                  color: Color(0xFFDC143C),
+                  color: Color(0xFFFF0000),
                   shape: BoxShape.circle,
                 ),
                 markerDecoration: const BoxDecoration(
-                  color: Color(0xFFDC143C),
+                  color: Color(0xFFFF0000),
                   shape: BoxShape.circle,
                 ),
               ),

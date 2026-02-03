@@ -186,7 +186,7 @@ class _OnlineBookingState extends State<OnlineBooking> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFDC143C),
+                        color: const Color(0xFFFF0000),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -247,7 +247,7 @@ class _OnlineBookingState extends State<OnlineBooking> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Color(0xFFDC143C),
+              color: Color(0xFFFF0000),
             ),
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
