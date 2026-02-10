@@ -65,6 +65,7 @@ class EventModel {
   final List<String> requiredRanks;
   final String? description;
   final String? requirements;
+  final String room; // new field
 
   EventModel({
     required this.id,
@@ -79,6 +80,7 @@ class EventModel {
     this.requiredRanks = const [],
     this.description,
     this.requirements,
+    this.room = 'Room A', // default value
   });
 
   factory EventModel.fromFirestore(DocumentSnapshot doc) {
@@ -96,6 +98,7 @@ class EventModel {
       requiredRanks: List<String>.from(data['requiredRanks'] ?? []),
       description: data['description'],
       requirements: data['requirements'],
+      room: data['room'] ?? 'Room A',
     );
   }
 
@@ -112,6 +115,7 @@ class EventModel {
       'requiredRanks': requiredRanks,
       'description': description,
       'requirements': requirements,
+      'room': room,
     };
   }
 
@@ -130,6 +134,8 @@ class EnrollmentModel {
   final String status; // 'enrolled', 'waitlisted', 'cancelled'
   final DateTime enrolledAt;
   final bool isPaid;
+  final DateTime? removedAt; // new field - track when student was removed
+  final bool isActive; // new field - false if student was removed
 
   EnrollmentModel({
     required this.id,
@@ -138,6 +144,8 @@ class EnrollmentModel {
     required this.status,
     required this.enrolledAt,
     this.isPaid = false,
+    this.removedAt,
+    this.isActive = true,
   });
 
   factory EnrollmentModel.fromFirestore(DocumentSnapshot doc) {
@@ -149,6 +157,10 @@ class EnrollmentModel {
       status: data['status'] ?? 'enrolled',
       enrolledAt: (data['enrolledAt'] as Timestamp).toDate(),
       isPaid: data['isPaid'] ?? false,
+      removedAt: data['removedAt'] != null
+          ? (data['removedAt'] as Timestamp).toDate()
+          : null,
+      isActive: data['isActive'] ?? true,
     );
   }
 
@@ -159,6 +171,8 @@ class EnrollmentModel {
       'status': status,
       'enrolledAt': Timestamp.fromDate(enrolledAt),
       'isPaid': isPaid,
+      'removedAt': removedAt != null ? Timestamp.fromDate(removedAt!) : null,
+      'isActive': isActive,
     };
   }
 }

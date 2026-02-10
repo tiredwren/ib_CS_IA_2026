@@ -151,16 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: 'Book',
                   index: 2,
                 ),
-                _buildNavItem(
-                  icon: Icons.shopping_bag,
-                  label: 'Proshop',
-                  index: 3,
-                ),
-                _buildNavItem(
-                  icon: Icons.newspaper,
-                  label: 'News',
-                  index: 4,
-                ),
               ],
             ),
           ),

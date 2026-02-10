@@ -15,9 +15,14 @@ class _SignupScreenState extends State<SignupScreen> {
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _positionController = TextEditingController();
+  final _adminCodeController = TextEditingController();
+
   String _selectedProgram = 'Pee Wee Kickers (ages 3 - 5)';
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _isAdminSignup = false;
+  bool _hiddenAdminCode = true;
 
   final List<String> _programs = [
     'Pee Wee Kickers (ages 3 - 5)',
@@ -33,6 +38,8 @@ class _SignupScreenState extends State<SignupScreen> {
     _lastNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _positionController.dispose();
+    _adminCodeController.dispose();
     super.dispose();
   }
 
@@ -48,6 +55,8 @@ class _SignupScreenState extends State<SignupScreen> {
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
       program: _selectedProgram,
+      position: _isAdminSignup ? _positionController.text.trim() : null,
+      adminCode: _isAdminSignup ? _adminCodeController.text.trim() : null,
     );
 
     setState(() => _isLoading = false);
@@ -134,7 +143,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // last name field
+// last name field
                   const Text(
                     'Last name',
                     style: TextStyle(
@@ -157,36 +166,129 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Program
+                  // account type dropdown
                   const Text(
-                    'Program',
+                    "Account type",
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: _selectedProgram,
+                  const SizedBox(height: 8,),
+                  DropdownButtonFormField<bool>(
+                    value: _isAdminSignup,
                     decoration: const InputDecoration(
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
+                          horizontal: 16,
+                          vertical: 16
                       ),
                     ),
-                    items: _programs.map((program) {
-                      return DropdownMenuItem(
-                        value: program,
-                        child: Text(program),
-                      );
-                    }).toList(),
+                    items: const [
+                      DropdownMenuItem(
+                        child: Text("Student"),
+                        value: false,
+                      ),
+                      DropdownMenuItem(
+                        child: Text("Admin"),
+                        value: true,
+                      ),
+                    ],
                     onChanged: (value) {
-                      setState(() => _selectedProgram = value!);
+                      setState(() => _isAdminSignup = value!);
                     },
                   ),
                   const SizedBox(height: 20),
 
-                  // email field
+                  // show program dropdown for students
+                  if (!_isAdminSignup) ...[
+                    const Text(
+                      'Program',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedProgram,
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                      items: _programs.map((program) {
+                        return DropdownMenuItem(
+                          value: program,
+                          child: Text(program),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() => _selectedProgram = value!);
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // show position and admin code for admins
+                  if (_isAdminSignup) ...[
+                    const Text(
+                      "Position",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _positionController,
+                      decoration: const InputDecoration(
+                        hintText: "eg. Front Desk Manager",
+                      ),
+                      validator: (value) {
+                        if (_isAdminSignup && (value == null || value.isEmpty)) {
+                          return "Please enter your position";
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 20),
+
+                    const Text(
+                      "Admin Code",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _adminCodeController,
+                      obscureText: _hiddenAdminCode,
+                      decoration: InputDecoration(
+                        hintText: "Enter admin code",
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              _hiddenAdminCode
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined
+                          ),
+                          onPressed: () {
+                            setState(() => _hiddenAdminCode = !_hiddenAdminCode);
+                          },
+                        ),
+                      ),
+                      validator: (value) {
+                        if (_isAdminSignup && (value == null || value.isEmpty)) {
+                          return "Please enter the admin code";
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // email
                   const Text(
                     'Email',
                     style: TextStyle(
@@ -213,7 +315,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // password field
+                  // password
                   const Text(
                     'Password',
                     style: TextStyle(
