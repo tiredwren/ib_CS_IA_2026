@@ -26,9 +26,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
   Future<void> _loadStudents() async {
     setState(() => _isLoading = true);
-
     try {
-      // get all active enrollments for this event
       final enrollmentsSnapshot = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('eventId', isEqualTo: widget.event.id)
@@ -40,21 +38,14 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
       for (var enrollmentDoc in enrollmentsSnapshot.docs) {
         final enrollment = EnrollmentModel.fromFirestore(enrollmentDoc);
-
-        // get user data
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(enrollment.userId)
             .get();
-
         if (userDoc.exists) {
           final user = UserModel.fromFirestore(userDoc);
-
-          if (enrollment.status == 'enrolled') {
-            enrolled.add(user);
-          } else if (enrollment.status == 'waitlisted') {
-            waitlisted.add(user);
-          }
+          if (enrollment.status == 'enrolled') enrolled.add(user);
+          else if (enrollment.status == 'waitlisted') waitlisted.add(user);
         }
       }
 
@@ -68,7 +59,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error loading students: $e')),
+          SnackBar(content: Text('Error loading students: $e')),
         );
       }
     }
@@ -76,7 +67,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
   Future<void> _removeStudent(UserModel student, String currentStatus) async {
     try {
-      // find the enrollment document
       final enrollmentSnapshot = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('userId', isEqualTo: student.uid)
@@ -86,26 +76,17 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           .get();
 
       if (enrollmentSnapshot.docs.isEmpty) return;
-
-      final enrollmentDoc = enrollmentSnapshot.docs.first;
-
-      // mark as removed instead of deleting
-      await enrollmentDoc.reference.update({
+      await enrollmentSnapshot.docs.first.reference.update({
         'isActive': false,
         'removedAt': Timestamp.now(),
       });
 
-      // if removing an enrolled student, check waitlist
       if (currentStatus == 'enrolled') {
-        // update event enrollment count
         await FirebaseFirestore.instance
             .collection('events')
             .doc(widget.event.id)
-            .update({
-          'currentEnrollment': FieldValue.increment(-1),
-        });
+            .update({'currentEnrollment': FieldValue.increment(-1)});
 
-        // move first waitlisted student to enrolled
         if (_waitlistedStudents.isNotEmpty) {
           final nextStudent = _waitlistedStudents.first;
           final waitlistSnapshot = await FirebaseFirestore.instance
@@ -117,42 +98,31 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
               .get();
 
           if (waitlistSnapshot.docs.isNotEmpty) {
-            await waitlistSnapshot.docs.first.reference.update({
-              'status': 'enrolled',
-            });
-
-            // update event enrollment count
+            await waitlistSnapshot.docs.first.reference.update({'status': 'enrolled'});
             await FirebaseFirestore.instance
                 .collection('events')
                 .doc(widget.event.id)
-                .update({
-              'currentEnrollment': FieldValue.increment(1),
-            });
+                .update({'currentEnrollment': FieldValue.increment(1)});
           }
         }
       }
 
       await _loadStudents();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${student.firstName} ${student.lastName} removed from class'),
-            backgroundColor: Colors.green,
-          ),
+          SnackBar(content: Text('${student.firstName} removed from class')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error removing student: $e')),
+          SnackBar(content: Text('Error removing student: $e')),
         );
       }
     }
   }
 
   Future<void> _showAddStudentDialog() async {
-    // get all students who aren't already in this class
     final usersSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'student')
@@ -171,56 +141,38 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     final availableStudents = usersSnapshot.docs
         .map((doc) => UserModel.fromFirestore(doc))
         .where((user) => !enrolledUserIds.contains(user.uid))
-        .toList();
+        .toList()
+      ..sort((a, b) => a.lastName.compareTo(b.lastName));
 
     if (!mounted) return;
 
     if (availableStudents.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('no available students to add')),
+        const SnackBar(content: Text('No students available to add')),
       );
       return;
     }
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('add student'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: availableStudents.length,
-            itemBuilder: (context, index) {
-              final student = availableStudents[index];
-              return ListTile(
-                title: Text('${student.firstName} ${student.lastName}'),
-                subtitle: Text('${student.rank} - ${student.program}'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _addStudent(student);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('cancel'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AddStudentSheet(
+        students: availableStudents,
+        isFull: _currentEnrollment >= widget.event.maxCapacity,
+        onAdd: (student) {
+          Navigator.pop(context);
+          _addStudent(student);
+        },
       ),
     );
   }
 
   Future<void> _addStudent(UserModel student) async {
     try {
-      // check if class is full
       final isFull = _currentEnrollment >= widget.event.maxCapacity;
       final status = isFull ? 'waitlisted' : 'enrolled';
 
-      // create enrollment
       await FirebaseFirestore.instance.collection('enrollments').add({
         'userId': student.uid,
         'eventId': widget.event.id,
@@ -230,14 +182,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         'isPaid': false,
       });
 
-      // update enrollment count if not waitlisted
       if (!isFull) {
         await FirebaseFirestore.instance
             .collection('events')
             .doc(widget.event.id)
-            .update({
-          'currentEnrollment': FieldValue.increment(1),
-        });
+            .update({'currentEnrollment': FieldValue.increment(1)});
       }
 
       await _loadStudents();
@@ -245,34 +194,97 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '${student.firstName} ${student.lastName} added as $status',
-            ),
-            backgroundColor: Colors.green,
+            content: Text('${student.firstName} ${student.lastName} was $status'),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error adding student: $e')),
+          SnackBar(content: Text('Error adding student: $e')),
         );
       }
     }
   }
 
+  void _confirmRemove(UserModel student, String status) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Remove ${student.firstName}?',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'They\'ll be removed from this class. If there\'s a waitlist, the next student will be enrolled automatically.',
+                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.grey[300]!),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Colors.black87)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _removeStudent(student, status);
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFCC0000),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Remove'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final spotsLeft = widget.event.maxCapacity - _currentEnrollment;
+    final isFull = spotsLeft <= 0;
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: Text(widget.event.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add),
-            onPressed: _showAddStudentDialog,
-            tooltip: 'add student',
-          ),
-        ],
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: false,
+        title: Text(
+          widget.event.name,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -281,163 +293,510 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // class details card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'class details',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildDetailRow(Icons.access_time,
-                        '${DateFormat.jm().format(widget.event.startTime)} - ${DateFormat.jm().format(widget.event.endTime)}'),
-                    _buildDetailRow(Icons.person, widget.event.instructor),
-                    _buildDetailRow(Icons.meeting_room, widget.event.room),
-                    _buildDetailRow(Icons.military_tech,
-                        widget.event.requiredRanks.isEmpty
-                            ? 'all ranks'
-                            : widget.event.requiredRanks.join(', ')),
-                    _buildDetailRow(Icons.groups,
-                        '$_currentEnrollment / ${widget.event.maxCapacity}'),
-                    if (widget.event.price > 0)
-                      _buildDetailRow(Icons.attach_money,
-                          '\$${widget.event.price.toStringAsFixed(2)}'),
-                  ],
-                ),
-              ),
+            // class details
+            _ClassDetailsCard(
+              event: widget.event,
+              currentEnrollment: _currentEnrollment,
             ),
             const SizedBox(height: 24),
 
-            // enrolled students section
-            Text(
-              'enrolled students ($_currentEnrollment/${widget.event.maxCapacity})',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _enrolledStudents.isEmpty
-                ? Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'no enrolled students',
-                    style: TextStyle(color: Colors.grey[600]),
+            // dealing with enrolled students
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                const Text(
+                  'Enrolled',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$_currentEnrollment of ${widget.event.maxCapacity}',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _showAddStudentDialog,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add student'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFCC0000),
+                    overlayColor: Colors.grey[400],
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.padded,
                   ),
                 ),
-              ),
-            )
-                : ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _enrolledStudents.length,
-              itemBuilder: (context, index) {
-                return _buildStudentCard(
-                  _enrolledStudents[index],
-                  'enrolled',
-                );
-              },
+              ],
             ),
-            const SizedBox(height: 24),
 
-            // waitlisted students section
-            if (_waitlistedStudents.isNotEmpty) ...[
+            if (!isFull) ...[
+              const SizedBox(height: 4),
               Text(
-                'waitlisted students (${_waitlistedStudents.length})',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                '$spotsLeft spot${spotsLeft == 1 ? '' : 's'} remaining',
+                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
               ),
-              const SizedBox(height: 12),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _waitlistedStudents.length,
-                itemBuilder: (context, index) {
-                  return _buildStudentCard(
-                    _waitlistedStudents[index],
-                    'waitlisted',
-                  );
-                },
+            ] else ...[
+              const SizedBox(height: 4),
+              const Text(
+                'Class full',
+                style: TextStyle(fontSize: 12, color: Color(0xFFCC0000)),
               ),
             ],
+
+            const SizedBox(height: 12),
+
+            _enrolledStudents.isEmpty
+                ? _EmptyState(label: 'No students enrolled yet')
+                : Column(
+              children: _enrolledStudents
+                  .map((s) => _StudentCard(
+                student: s,
+                status: 'enrolled',
+                onRemove: () => _confirmRemove(s, 'enrolled'),
+              ))
+                  .toList(),
+            ),
+
+            // dealing with waitlisted students
+            if (_waitlistedStudents.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  const Text(
+                    'Waitlist',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_waitlistedStudents.length}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Column(
+                children: _waitlistedStudents
+                    .map((s) => _StudentCard(
+                  student: s,
+                  status: 'waitlisted',
+                  onRemove: () => _confirmRemove(s, 'waitlisted'),
+                ))
+                    .toList(),
+              ),
+            ],
+
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildDetailRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+// class card
+
+class _ClassDetailsCard extends StatelessWidget {
+  final EventModel event;
+  final int currentEnrollment;
+
+  const _ClassDetailsCard({required this.event, required this.currentEnrollment});
+
+  @override
+  Widget build(BuildContext context) {
+    final timeStr =
+        '${DateFormat.jm().format(event.startTime)} – ${DateFormat.jm().format(event.endTime)}';
+    final ranksStr = event.requiredRanks.isEmpty ? 'All ranks' : event.requiredRanks.join(', ');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
         children: [
-          Icon(icon, size: 16, color: Colors.grey),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: Colors.grey[700]),
-            ),
+          _DetailRow(label: 'Time', value: timeStr),
+          _DetailRow(label: 'Instructor', value: event.instructor),
+          _DetailRow(label: 'Room', value: event.room),
+          _DetailRow(label: 'Ranks', value: ranksStr),
+          _DetailRow(
+            label: 'Capacity',
+            value: '$currentEnrollment / ${event.maxCapacity}',
           ),
+          if (event.price > 0)
+            _DetailRow(
+              label: 'Price',
+              value: '\$${event.price.toStringAsFixed(2)}',
+              isLast: true,
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildStudentCard(UserModel student, String status) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFFFF0000),
-          child: Text(
-            student.firstName[0].toUpperCase(),
-            style: const TextStyle(color: Colors.white),
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isLast;
+
+  const _DetailRow({required this.label, required this.value, this.isLast = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 88,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  value,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+              ),
+            ],
           ),
         ),
-        title: Text('${student.firstName} ${student.lastName}'),
-        subtitle: Text('${student.rank} - ${student.program}'),
-        trailing: IconButton(
-          icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('remove student'),
-                content: Text(
-                  'are you sure you want to remove ${student.firstName} ${student.lastName}?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('cancel'),
+        if (!isLast) Divider(height: 1, color: Colors.grey[100]),
+      ],
+    );
+  }
+}
+
+// student card
+
+class _StudentCard extends StatelessWidget {
+  final UserModel student;
+  final String status;
+  final VoidCallback onRemove;
+
+  const _StudentCard({
+    required this.student,
+    required this.status,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initials =
+    '${student.firstName[0]}${student.lastName.isNotEmpty ? student.lastName[0] : ''}'
+        .toUpperCase();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            // avatar
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCC0000).withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFCC0000),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _removeStudent(student, status);
-                    },
-                    child: const Text(
-                      'remove',
-                      style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // name + rank
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${student.firstName} ${student.lastName}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
                     ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${student.rank} · ${student.program}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                   ),
                 ],
               ),
-            );
-          },
+            ),
+
+            // waitlist badge
+            if (status == 'waitlisted')
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Text(
+                  'Waitlist',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ),
+
+            // remove button
+            GestureDetector(
+              onTap: onRemove,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.close, size: 18, color: Colors.grey[400]),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+// bottom half of "add student"
+class _AddStudentSheet extends StatefulWidget {
+  final List<UserModel> students;
+  final bool isFull;
+  final void Function(UserModel) onAdd;
+
+  const _AddStudentSheet({
+    required this.students,
+    required this.isFull,
+    required this.onAdd,
+  });
+
+  @override
+  State<_AddStudentSheet> createState() => _AddStudentSheetState();
+}
+
+class _AddStudentSheetState extends State<_AddStudentSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = widget.students
+        .where((s) =>
+        '${s.firstName} ${s.lastName} ${s.rank}'
+            .toLowerCase()
+            .contains(_query.toLowerCase()))
+        .toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // drag handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Add student',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (widget.isFull)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Text(
+                        'Will be waitlisted',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // search
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+              child: TextField(
+                autofocus: true,
+                onChanged: (v) => setState(() => _query = v),
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Search by name or rank…',
+                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+                  prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey[400]),
+                  filled: true,
+                  fillColor: const Color(0xFFF5F5F5),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+
+            Divider(height: 1, color: Colors.grey[100]),
+
+            // list
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                child: Text(
+                  'No students found',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                ),
+              )
+                  : ListView.separated(
+                controller: scrollController,
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) =>
+                    Divider(height: 1, indent: 68, color: Colors.grey[100]),
+                itemBuilder: (context, i) {
+                  final s = filtered[i];
+                  final initials =
+                  '${s.firstName[0]}${s.lastName.isNotEmpty ? s.lastName[0] : ''}'
+                      .toUpperCase();
+                  return InkWell(
+                    onTap: () => widget.onAdd(s),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFCC0000).withOpacity(0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                initials,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFCC0000),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${s.firstName} ${s.lastName}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${s.rank} · ${s.program}',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey[500]),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.add, size: 18, color: Colors.grey[350]),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String label;
+  const _EmptyState({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 14, color: Colors.grey[400]),
       ),
     );
   }

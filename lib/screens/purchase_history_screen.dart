@@ -123,7 +123,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFFFF0000),
+                  color: Color(0xFFCC0000),
                 ),
               ),
             ],
@@ -157,8 +157,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
           margin: const EdgeInsets.only(bottom: 8),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: const Color(0xFFFF0000).withOpacity(0.1),
-              child: const Icon(Icons.shopping_bag, color: Color(0xFFFF0000)),
+              backgroundColor: const Color(0xFFCC0000).withOpacity(0.1),
+              child: const Icon(Icons.shopping_bag, color: Color(0xFFCC0000)),
             ),
             title: Text(purchase.productName),
             subtitle: Column(

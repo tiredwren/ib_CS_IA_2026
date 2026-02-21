@@ -65,7 +65,7 @@ class _SignupScreenState extends State<SignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error),
-          backgroundColor: Color(0xFFFF0000),
+          backgroundColor: Color(0xFFCC0000),
         ),
       );
     } else if (mounted) {
@@ -103,7 +103,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: const Icon(
                           Icons.sports_martial_arts,
                           size: 60,
-                          color: Color(0xFFFF0000),
+                          color: Color(0xFFCC0000),
                         ),
                       );
                     },
@@ -143,7 +143,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
 
-// last name field
+                  // last name field
                   const Text(
                     'Last name',
                     style: TextStyle(
@@ -391,7 +391,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: const Text(
                           'Login',
                           style: TextStyle(
-                            color: Color(0xFFFF0000),
+                            color: Color(0xFFCC0000),
                             fontWeight: FontWeight.bold,
                           ),
                         ),

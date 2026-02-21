@@ -100,9 +100,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 value: 'logout',
                 child: const Row(
                   children: [
-                    Icon(Icons.logout, size: 20, color: Color(0xFFFF0000)),
+                    Icon(Icons.logout, size: 20, color: Color(0xFFCC0000)),
                     SizedBox(width: 12),
-                    Text('Logout', style: TextStyle(color: Color(0xFFFF0000))),
+                    Text('Logout', style: TextStyle(color: Color(0xFFCC0000))),
                   ],
                 ),
               ),
@@ -118,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _screens[_selectedIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFF0000),
+          color: const Color(0xFFCC0000),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),

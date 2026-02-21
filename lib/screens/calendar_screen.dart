@@ -35,29 +35,28 @@ class _CalendarState extends State<Calendar> {
 
   List<DateTime> _expandDates(EventModel event) {
     const toWeekday = {
-      "Monday": DateTime.monday,
-      "Tuesday": DateTime.tuesday,
-      "Wednesday": DateTime.wednesday,
-      "Thursday": DateTime.thursday,
-      "Friday": DateTime.friday,
-      "Saturday": DateTime.saturday,
-      "Sunday": DateTime.sunday
+      'Monday': DateTime.monday,
+      'Tuesday': DateTime.tuesday,
+      'Wednesday': DateTime.wednesday,
+      'Thursday': DateTime.thursday,
+      'Friday': DateTime.friday,
+      'Saturday': DateTime.saturday,
+      'Sunday': DateTime.sunday,
     };
     final now = DateTime.now();
-    final stopAdding = now.add(const Duration(days: 90));
-    final allDates = <DateTime>[];
+    final stop = now.add(const Duration(days: 90));
+    final dates = <DateTime>[];
 
     for (final day in event.daysOfWeek) {
       final weekday = toWeekday[day];
       int daysTo = (weekday! - now.weekday + 7) % 7;
       DateTime current = DateTime(now.year, now.month, now.day).add(Duration(days: daysTo));
-      while (!current.isAfter(stopAdding)) {
-        allDates.add(current);
+      while (!current.isAfter(stop)) {
+        dates.add(current);
         current = current.add(const Duration(days: 7));
       }
     }
-
-    return allDates;
+    return dates;
   }
 
   Future<void> _loadEvents() async {
@@ -70,31 +69,21 @@ class _CalendarState extends State<Calendar> {
     if (user == null) return;
 
     try {
-      // load all events
       final eventsSnapshot = await FirebaseFirestore.instance
           .collection('events')
-          //.where('startTime', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 30)))
           .get();
 
       Map<DateTime, List<EventModel>> eventsByDate = {};
 
       if (isAdmin) {
-        // admins see all classes
         for (var doc in eventsSnapshot.docs) {
           final event = EventModel.fromFirestore(doc);
-
           for (final date in _expandDates(event)) {
             eventsByDate[date] ??= [];
             eventsByDate[date]!.add(event);
           }
         }
-
-        print('Total dates mapped: ${eventsByDate.length}');
-        eventsByDate.forEach((date, events) => print('$date: ${events.length} events'));
-        eventsByDate.forEach((date, events) => print('$date: ${events.length} events'));
-
       } else {
-        // students only see classes they're enrolled in or eligible for
         final enrollmentsSnapshot = await FirebaseFirestore.instance
             .collection('enrollments')
             .where('userId', isEqualTo: user.uid)
@@ -107,7 +96,6 @@ class _CalendarState extends State<Calendar> {
 
         for (var doc in eventsSnapshot.docs) {
           final event = EventModel.fromFirestore(doc);
-
           if (enrolledEventIds.contains(event.id) || event.isUserEligible(user.rank)) {
             for (final date in _expandDates(event)) {
               eventsByDate[date] ??= [];
@@ -126,21 +114,14 @@ class _CalendarState extends State<Calendar> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error loading events: $e')),
+          SnackBar(content: Text('Error loading events: $e')),
         );
       }
     }
   }
 
-  // List<EventModel> _getEventsForDay(DateTime day) {
-  //   final normDay = DateTime(day.year, day.month, day.day);
-  //   return _events[normDay] ?? [];
-  // }
-
-
   List<EventModel> _getEventsForDay(DateTime day) {
-    // solves issue with calendar dots appearing only on four days
-    // looks for year/month/day rather than time match
+    // match by date only, not time, to fix dots appearing on only a few days
     return _events.entries
         .where((e) =>
     e.key.year == day.year &&
@@ -152,7 +133,6 @@ class _CalendarState extends State<Calendar> {
 
   Future<void> _deleteEvent(EventModel event) async {
     try {
-      // delete all enrollments for this event
       final enrollmentsSnapshot = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('eventId', isEqualTo: event.id)
@@ -162,7 +142,6 @@ class _CalendarState extends State<Calendar> {
         await doc.reference.delete();
       }
 
-      // delete the event
       await FirebaseFirestore.instance
           .collection('events')
           .doc(event.id)
@@ -172,10 +151,7 @@ class _CalendarState extends State<Calendar> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Class deleted successfully'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('Class deleted')),
         );
       }
     } catch (e) {
@@ -190,22 +166,57 @@ class _CalendarState extends State<Calendar> {
   void _showDeleteConfirmation(EventModel event) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete class'),
-        content: Text('Are you sure you want to delete "${event.name}"? this will remove all student enrollments.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Delete "${event.name}"?',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This will remove all student enrollments for this class.',
+                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.grey[300]!),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Colors.black87)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _deleteEvent(event);
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFCC0000),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Delete'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteEvent(event);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -216,13 +227,15 @@ class _CalendarState extends State<Calendar> {
     final isAdmin = authService.isAdmin;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
+          // calendar
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: TableCalendar(
               key: ValueKey(_events.length),
               firstDay: DateTime.now().subtract(const Duration(days: 365)),
@@ -243,15 +256,15 @@ class _CalendarState extends State<Calendar> {
               },
               calendarStyle: CalendarStyle(
                 todayDecoration: BoxDecoration(
-                  color: const Color(0xFFFF0000).withOpacity(0.5),
+                  color: const Color(0xFFCC0000).withOpacity(0.4),
                   shape: BoxShape.circle,
                 ),
                 selectedDecoration: const BoxDecoration(
-                  color: Color(0xFFFF0000),
+                  color: Color(0xFFCC0000),
                   shape: BoxShape.circle,
                 ),
                 markerDecoration: const BoxDecoration(
-                  color: Color(0xFFFF0000),
+                  color: Color(0xFFCC0000),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -262,81 +275,54 @@ class _CalendarState extends State<Calendar> {
               ),
             ),
           ),
+          const SizedBox(height: 10,),
           const Divider(height: 1),
 
-          // admin controls
-          if (isAdmin) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: const Color(0xFFFF0000).withOpacity(0.1),
-              child: Row(
-                children: [
-                  const Icon(Icons.admin_panel_settings, color: Color(0xFFFF0000)),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Admin Mode',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF0000),
-                    ),
-                  ),
-                  const Spacer(),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddEventScreen(
-                            selectedDate: _selectedDay ?? DateTime.now(),
-                          ),
+          // create class button
+          if (isAdmin)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 12),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddEventScreen(
+                          selectedDate: _selectedDay ?? DateTime.now(),
                         ),
-                      );
-                      if (result == true) {
-                        _loadEvents();
-                      }
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create Class '),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF0000),
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 5)
+                      ),
+                    );
+                    if (result == true) _loadEvents();
+                  },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Create class'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFCC0000),
+                    overlayColor: Colors.transparent,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-            const Divider(height: 1),
-          ],
-
+          // event list
           Expanded(
             child: _selectedEvents.isEmpty
                 ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.event_busy,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No classes scheduled',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+              child: Text(
+                'No classes on this day',
+                style: TextStyle(fontSize: 14, color: Colors.grey[400]),
               ),
             )
                 : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               itemCount: _selectedEvents.length,
-              itemBuilder: (context, index) {
-                return _buildEventCard(_selectedEvents[index], isAdmin);
-              },
+              itemBuilder: (context, i) =>
+                  _buildEventCard(_selectedEvents[i], isAdmin),
             ),
           ),
         ],
@@ -347,6 +333,8 @@ class _CalendarState extends State<Calendar> {
   Widget _buildEventCard(EventModel event, bool isAdmin) {
     final authService = Provider.of<AuthService>(context, listen: false);
     final user = authService.currentUserModel;
+    final timeStr =
+        '${DateFormat.jm().format(event.startTime)} – ${DateFormat.jm().format(event.endTime)}';
 
     return FutureBuilder<DocumentSnapshot?>(
       future: FirebaseFirestore.instance
@@ -356,17 +344,24 @@ class _CalendarState extends State<Calendar> {
           .where('isActive', isEqualTo: true)
           .limit(1)
           .get()
-          .then((snapshot) => snapshot.docs.isNotEmpty ? snapshot.docs.first : null),
+          .then((s) => s.docs.isNotEmpty ? s.docs.first : null),
       builder: (context, snapshot) {
-        final isEnrolled = snapshot.hasData && snapshot.data != null;
         final enrollment = snapshot.hasData && snapshot.data != null
             ? EnrollmentModel.fromFirestore(snapshot.data!)
             : null;
+        final isWaitlisted = enrollment?.status == 'waitlisted';
+        final isEnrolled = enrollment != null;
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 10),
+          color: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
           child: InkWell(
+            borderRadius: BorderRadius.circular(10),
             onTap: isAdmin
                 ? () async {
               await Navigator.push(
@@ -379,136 +374,93 @@ class _CalendarState extends State<Calendar> {
             }
                 : null,
             child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          event.getDisplayName(),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      if (isEnrolled && !isAdmin)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: enrollment?.status == 'waitlisted'
-                                ? Colors.orange
-                                : Colors.green,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            enrollment?.status == 'waitlisted'
-                                ? 'waitlisted'
-                                : 'enrolled',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      if (isAdmin) ...[
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () => _showDeleteConfirmation(event),
-                          tooltip: 'Delete class',
-                        ),
-                        const Icon(Icons.chevron_right),
-                      ],
-                    ],
+                  // time column
+                  SizedBox(
+                    width: 68,
+                    child: Text(
+                      timeStr.replaceFirst(' ', '\n'),
+                      style: TextStyle(fontSize: 12, height: 1.5, color: Colors.grey[400]),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.person, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        event.instructor,
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.meeting_room, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        event.room,
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (event.requiredRanks.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
+                  const SizedBox(width: 10),
+
+                  // event details
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.military_tech, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'Required: ${event.requiredRanks.join(", ")}',
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              fontSize: 14,
-                            ),
+                        Text(
+                          event.getDisplayName(),
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${event.instructor} · ${event.room}',
+                          style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                        ),
+                        if (event.requiredRanks.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            event.requiredRanks.join(', '),
+                            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
+                        ],
+                        if (isAdmin) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            '${event.currentEnrollment}/${event.maxCapacity} students',
+                            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                          ),
+                        ],
                       ],
                     ),
-                  ],
-                  if (isAdmin) ...[
-                    const SizedBox(height: 4),
+                  ),
+
+                  // status badge or admin controls
+                  if (isEnrolled && !isAdmin)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isWaitlisted ? Colors.orange.shade50 : Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isWaitlisted ? Colors.orange.shade200 : Colors.green.shade200,
+                        ),
+                      ),
+                      child: Text(
+                        isWaitlisted ? 'Waitlist' : 'Enrolled',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isWaitlisted ? Colors.orange.shade700 : Colors.green.shade700,
+                        ),
+                      ),
+                    ),
+
+                  if (isAdmin)
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.groups, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${event.currentEnrollment} / ${event.maxCapacity} students',
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
+                        GestureDetector(
+                          onTap: () => _showDeleteConfirmation(event),
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8, right: 4),
+                            child: Icon(Icons.delete_outline, size: 18, color: Colors.grey[350]),
                           ),
                         ),
+                        Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
                       ],
                     ),
-                  ],
-                  if (event.price > 0) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.attach_money, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '\$${event.price.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
             ),

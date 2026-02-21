@@ -12,38 +12,30 @@ class AddEventScreen extends StatefulWidget {
 
 class _AddEventScreenState extends State<AddEventScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(); // optional
+  final _nameController = TextEditingController();
   final _instructorController = TextEditingController();
   final _priceController = TextEditingController();
-  final _maxCapacityController = TextEditingController(text: "20");
+  final _maxCapacityController = TextEditingController(text: '20');
 
-  String _selectedRoom = "Room A";
-  String _selectedType = "Class";
+  String _selectedRoom = 'Room A';
+  String _selectedType = 'Class';
   List<String> _selectedRanks = [];
   List<String> _selectedDays = [];
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
   bool _isLoading = false;
 
-  final List<String> _rooms = ["Room A", "Room B", "Room C"];
-  final List<String> _types = ["Class", "Workshop", "Tournament", "Event"];
+  final List<String> _rooms = ['Room A', 'Room B', 'Room C'];
+  final List<String> _types = ['Class', 'Workshop', 'Tournament', 'Event'];
   final List<String> _daysOfWeek = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+  ];
+  final List<String> _daysOfWeekFull = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
   ];
   final List<String> _allRanks = [
-    "White Belt",
-    "Yellow Belt",
-    "Green Belt",
-    "Blue Belt",
-    "Brown Belt",
-    "Red Belt",
-    "Black Belt",
+    'White Belt', 'Yellow Belt', 'Green Belt',
+    'Blue Belt', 'Brown Belt', 'Red Belt', 'Black Belt',
   ];
 
   @override
@@ -55,20 +47,40 @@ class _AddEventScreenState extends State<AddEventScreen> {
     super.dispose();
   }
 
-  Future<void> _selectTime(BuildContext context, bool isStartTime) async {
-    final TimeOfDay? picked = await showTimePicker(
+  Future<void> _selectTime(bool isStart) async {
+    // override theme so time picker uses neutral colors instead of app accent
+    final picked = await showTimePicker(
       context: context,
-      initialTime: isStartTime ? _startTime : _endTime,
+      initialTime: isStart ? _startTime : _endTime,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: const Color(0xFFCC0000),
+            onPrimary: Colors.white,
+            surface: Colors.white,
+            onSurface: Colors.black87,
+          ),
+          timePickerTheme: TimePickerThemeData(
+            backgroundColor: Colors.white,
+            dialBackgroundColor: const Color(0xFFF5F5F5),
+            hourMinuteColor: const Color(0xFFF5F5F5),
+            hourMinuteTextColor: Colors.black87,
+            dayPeriodColor: const Color(0xFFF5F5F5),
+            dayPeriodTextColor: Colors.black87,
+            entryModeIconColor: Colors.grey,
+            helpTextStyle: const TextStyle(
+              color: Colors.black54,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        child: child!,
+      ),
     );
 
     if (picked != null) {
-      setState(() {
-        if (isStartTime) {
-          _startTime = picked;
-        } else {
-          _endTime = picked;
-        }
-      });
+      setState(() => isStart ? _startTime = picked : _endTime = picked);
     }
   }
 
@@ -77,7 +89,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
     if (_selectedDays.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select at least one day")),
+        const SnackBar(content: Text('Please select at least one day')),
       );
       return;
     }
@@ -85,7 +97,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // use the selected date just for the date component, time comes from time pickers
       final startDateTime = DateTime(
         widget.selectedDate.year,
         widget.selectedDate.month,
@@ -93,7 +104,6 @@ class _AddEventScreenState extends State<AddEventScreen> {
         _startTime.hour,
         _startTime.minute,
       );
-
       final endDateTime = DateTime(
         widget.selectedDate.year,
         widget.selectedDate.month,
@@ -102,49 +112,45 @@ class _AddEventScreenState extends State<AddEventScreen> {
         _endTime.minute,
       );
 
-      // validate end time is after start time
-      if (endDateTime.isBefore(startDateTime) || endDateTime.isAtSameMomentAs(startDateTime)) {
+      if (!endDateTime.isAfter(startDateTime)) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("End time must be after start time")),
+          const SnackBar(content: Text('End time must be after start time')),
         );
         return;
       }
 
-      await FirebaseFirestore.instance.collection("events").add({
-        "name": _nameController.text.trim(), // optional
-        "type": _selectedType,
-        "startTime": Timestamp.fromDate(startDateTime),
-        "endTime": Timestamp.fromDate(endDateTime),
-        "instructor": _instructorController.text.trim(),
-        "requiredRanks": _selectedRanks,
-        "price": double.tryParse(_priceController.text) ?? 0.0,
-        "room": _selectedRoom,
-        "maxCapacity": int.tryParse(_maxCapacityController.text) ?? 20,
-        "currentEnrollment": 0,
-        "description": null,
-        "requirements": null,
-        "daysOfWeek": _selectedDays,
-        "startHour": _startTime.hour,
-        "startMinute": _startTime.minute,
-        "endHour": _endTime.hour,
-        "endMinute": _endTime.minute,
+      await FirebaseFirestore.instance.collection('events').add({
+        'name': _nameController.text.trim(),
+        'type': _selectedType,
+        'startTime': Timestamp.fromDate(startDateTime),
+        'endTime': Timestamp.fromDate(endDateTime),
+        'instructor': _instructorController.text.trim(),
+        'requiredRanks': _selectedRanks,
+        'price': double.tryParse(_priceController.text) ?? 0.0,
+        'room': _selectedRoom,
+        'maxCapacity': int.tryParse(_maxCapacityController.text) ?? 20,
+        'currentEnrollment': 0,
+        'description': null,
+        'requirements': null,
+        'daysOfWeek': _selectedDays,
+        'startHour': _startTime.hour,
+        'startMinute': _startTime.minute,
+        'endHour': _endTime.hour,
+        'endMinute': _endTime.minute,
       });
 
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Class created successfully!"),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('Class created')),
         );
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error creating class: $e")),
+          SnackBar(content: Text('Error creating class: $e')),
         );
       }
     }
@@ -153,244 +159,385 @@ class _AddEventScreenState extends State<AddEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text("Create new class"),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: false,
+        title: const Text(
+          'Create class',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // days of week selection
-              const Text("Days of week", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _daysOfWeek.map((day) {
-                  final isSelected = _selectedDays.contains(day);
-                  return FilterChip(
-                    label: Text(day),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          _selectedDays.add(day);
-                        } else {
-                          _selectedDays.remove(day);
-                        }
-                      });
-                    },
-                    selectedColor: const Color(0xFFFF0000).withOpacity(0.3),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 24),
 
-              // time selection
+              // days of week
+              _SectionCard(
+                children: [
+                  _FieldLabel('Days'),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(_daysOfWeek.length, (i) {
+                      final full = _daysOfWeekFull[i];
+                      final short = _daysOfWeek[i];
+                      final selected = _selectedDays.contains(full);
+                      return GestureDetector(
+                        onTap: () => setState(() =>
+                        selected ? _selectedDays.remove(full) : _selectedDays.add(full)),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: selected ? const Color(0xFFCC0000) : const Color(0xFFF0F0F0),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              short[0], // just the first letter, M T W T F S S
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: selected ? Colors.white : Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // time row
               Row(
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: _SectionCard(
                       children: [
-                        const Text("Start time", style: TextStyle(fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 8),
-                        InkWell(
-                          onTap: () => _selectTime(context, true),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.access_time, size: 20),
-                                const SizedBox(width: 8),
-                                Text(_startTime.format(context)),
-                              ],
-                            ),
-                          ),
+                        _FieldLabel('Start time'),
+                        const SizedBox(height: 10),
+                        _TimeTile(
+                          time: _startTime.format(context),
+                          onTap: () => _selectTime(true),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: _SectionCard(
                       children: [
-                        const Text("End time", style: TextStyle(fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 8),
-                        InkWell(
-                          onTap: () => _selectTime(context, false),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.access_time, size: 20),
-                                const SizedBox(width: 8),
-                                Text(_endTime.format(context)),
-                              ],
-                            ),
-                          ),
+                        _FieldLabel('End time'),
+                        const SizedBox(height: 10),
+                        _TimeTile(
+                          time: _endTime.format(context),
+                          onTap: () => _selectTime(false),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              // class name (optional)
-              const Text("Class name (optional)", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  hintText: "eg. Advanced Sparring",
-                ),
+              // class details
+              _SectionCard(
+                children: [
+                  _FieldLabel('Class name'),
+                  const SizedBox(height: 6),
+                  _field(
+                    controller: _nameController,
+                    hint: 'eg. Advanced Sparring (optional)',
+                  ),
+                  const SizedBox(height: 16),
+                  _FieldLabel('Instructor'),
+                  const SizedBox(height: 6),
+                  _field(
+                    controller: _instructorController,
+                    hint: 'eg. SBN Lisa',
+                    validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Please enter instructor name' : null,
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              // type dropdown
-              const Text("Type", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedType,
-                decoration: const InputDecoration(
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                ),
-                items: _types.map((type) {
-                  return DropdownMenuItem(value: type, child: Text(type));
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedType = value!);
-                },
+              // type and room
+              _SectionCard(
+                children: [
+                  _FieldLabel('Type'),
+                  const SizedBox(height: 6),
+                  _dropdown<String>(
+                    value: _selectedType,
+                    items: _types,
+                    onChanged: (v) => setState(() => _selectedType = v!),
+                  ),
+                  const SizedBox(height: 16),
+                  _FieldLabel('Room'),
+                  const SizedBox(height: 6),
+                  _dropdown<String>(
+                    value: _selectedRoom,
+                    items: _rooms,
+                    onChanged: (v) => setState(() => _selectedRoom = v!),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-              // instructor
-              const Text("Instructor(s)", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _instructorController,
-                decoration: const InputDecoration(
-                  hintText: "eg. SBN Lisa",
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "Please enter instructor name(s)";
-                  }
-                  return null;
-                },
+              // capacity and price
+              _SectionCard(
+                children: [
+                  _FieldLabel('Max capacity'),
+                  const SizedBox(height: 6),
+                  _field(
+                    controller: _maxCapacityController,
+                    hint: '20',
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Required';
+                      if ((int.tryParse(v) ?? 0) <= 0) return 'Enter a valid number';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _FieldLabel('Price (optional)'),
+                  const SizedBox(height: 6),
+                  _field(
+                    controller: _priceController,
+                    hint: '0.00',
+                    keyboardType: TextInputType.number,
+                    prefix: const Text('\$  ', style: TextStyle(color: Colors.black54)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-
-              // room dropdown
-              const Text("Room", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedRoom,
-                decoration: const InputDecoration(
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                ),
-                items: _rooms.map((room) {
-                  return DropdownMenuItem(value: room, child: Text(room));
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedRoom = value!);
-                },
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               // required ranks
-              const Text("Required ranks (leave empty for all ranks)",
-                  style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _allRanks.map((rank) {
-                  final isSelected = _selectedRanks.contains(rank);
-                  return FilterChip(
-                    label: Text(rank),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          _selectedRanks.add(rank);
-                        } else {
-                          _selectedRanks.remove(rank);
-                        }
-                      });
-                    },
-                    selectedColor: const Color(0xFFFF0000).withOpacity(0.3),
-                  );
-                }).toList(),
+              _SectionCard(
+                children: [
+                  _FieldLabel('Required ranks'),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Leave empty for all ranks',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allRanks.map((rank) {
+                      final selected = _selectedRanks.contains(rank);
+                      return GestureDetector(
+                        onTap: () => setState(() =>
+                        selected ? _selectedRanks.remove(rank) : _selectedRanks.add(rank)),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: selected ? const Color(0xFFCC0000) : const Color(0xFFF0F0F0),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            rank,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: selected ? Colors.white : Colors.grey[700],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 28),
 
-              // max capacity
-              const Text("Max capacity", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _maxCapacityController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  hintText: "20",
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return "Please enter max capacity";
-                  }
-                  final capacity = int.tryParse(value);
-                  if (capacity == null || capacity <= 0) {
-                    return "Please enter a valid number";
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // price
-              const Text("price (optional)", style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  hintText: "0.00",
-                  prefixText: '\$ ',
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // create button
+              // submit
               SizedBox(
+                width: double.infinity,
                 height: 50,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: _isLoading ? null : _createEvent,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFCC0000),
+                    disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   child: _isLoading
                       ? const SizedBox(
-                    height: 20,
                     width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                      : const Text("Create Class"),
+                      : const Text(
+                    'Create Event',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
+              const SizedBox(height: 32),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // text field widget decoration (standard)
+  Widget _field({
+    required TextEditingController controller,
+    String? hint,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+    Widget? prefix,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: validator,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+        prefix: prefix,
+        filled: true,
+        fillColor: const Color(0xFFF5F5F5),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide.none,
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1),
+        ),
+      ),
+    );
+  }
+
+  // shared dropdown widget
+  Widget _dropdown<T>({
+    required T value,
+    required List<T> items,
+    required void Function(T?) onChanged,
+  }) {
+    return DropdownButtonFormField<T>(
+      value: value,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 14, color: Colors.black87),
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: const Color(0xFFF5F5F5),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1),
+        ),
+      ),
+      items: items
+          .map((item) => DropdownMenuItem(value: item, child: Text(item.toString())))
+          .toList(),
+    );
+  }
+}
+
+// card wrapper used for each section
+class _SectionCard extends StatelessWidget {
+  final List<Widget> children;
+
+  const _SectionCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
+// small uppercase label used above fields
+class _FieldLabel extends StatelessWidget {
+  final String text;
+
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: Colors.grey[500],
+      ),
+    );
+  }
+}
+
+// tappable time display tile
+class _TimeTile extends StatelessWidget {
+  final String time;
+  final VoidCallback onTap;
+
+  const _TimeTile({required this.time, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          time,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
           ),
         ),
       ),

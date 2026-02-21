@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error),
-          backgroundColor: Color(0xFFFF0000),
+          backgroundColor: Color(0xFFCC0000),
         ),
       );
     }
@@ -99,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Icon(
                           Icons.sports_martial_arts,
                           size: 80,
-                          color: Color(0xFFFF0000),
+                          color: Color(0xFFCC0000),
                         ),
                       );
                     },
@@ -213,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text(
                         'Forgot password?',
                         style: TextStyle(
-                          color: Color(0xFFFF0000),
+                          color: Color(0xFFCC0000),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -260,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Text(
                           'Sign up',
                           style: TextStyle(
-                            color: Color(0xFFFF0000),
+                            color: Color(0xFFCC0000),
                             fontWeight: FontWeight.bold,
                           ),
                         ),
