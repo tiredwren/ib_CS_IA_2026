@@ -33,6 +33,33 @@ class _CalendarState extends State<Calendar> {
     _loadEvents();
   }
 
+  List<DateTime> _expandDates(EventModel event) {
+    const toWeekday = {
+      "Monday": DateTime.monday,
+      "Tuesday": DateTime.tuesday,
+      "Wednesday": DateTime.wednesday,
+      "Thursday": DateTime.thursday,
+      "Friday": DateTime.friday,
+      "Saturday": DateTime.saturday,
+      "Sunday": DateTime.sunday
+    };
+    final now = DateTime.now();
+    final stopAdding = now.add(const Duration(days: 90));
+    final allDates = <DateTime>[];
+
+    for (final day in event.daysOfWeek) {
+      final weekday = toWeekday[day];
+      int daysTo = (weekday! - now.weekday + 7) % 7;
+      DateTime current = DateTime(now.year, now.month, now.day).add(Duration(days: daysTo));
+      while (!current.isAfter(stopAdding)) {
+        allDates.add(current);
+        current = current.add(const Duration(days: 7));
+      }
+    }
+
+    return allDates;
+  }
+
   Future<void> _loadEvents() async {
     setState(() => _isLoading = true);
 
@@ -46,7 +73,7 @@ class _CalendarState extends State<Calendar> {
       // load all events
       final eventsSnapshot = await FirebaseFirestore.instance
           .collection('events')
-          .where('startTime', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 30)))
+          //.where('startTime', isGreaterThanOrEqualTo: DateTime.now().subtract(const Duration(days: 30)))
           .get();
 
       Map<DateTime, List<EventModel>> eventsByDate = {};
@@ -55,17 +82,17 @@ class _CalendarState extends State<Calendar> {
         // admins see all classes
         for (var doc in eventsSnapshot.docs) {
           final event = EventModel.fromFirestore(doc);
-          final date = DateTime(
-            event.startTime.year,
-            event.startTime.month,
-            event.startTime.day,
-          );
 
-          if (eventsByDate[date] == null) {
-            eventsByDate[date] = [];
+          for (final date in _expandDates(event)) {
+            eventsByDate[date] ??= [];
+            eventsByDate[date]!.add(event);
           }
-          eventsByDate[date]!.add(event);
         }
+
+        print('Total dates mapped: ${eventsByDate.length}');
+        eventsByDate.forEach((date, events) => print('$date: ${events.length} events'));
+        eventsByDate.forEach((date, events) => print('$date: ${events.length} events'));
+
       } else {
         // students only see classes they're enrolled in or eligible for
         final enrollmentsSnapshot = await FirebaseFirestore.instance
@@ -82,16 +109,10 @@ class _CalendarState extends State<Calendar> {
           final event = EventModel.fromFirestore(doc);
 
           if (enrolledEventIds.contains(event.id) || event.isUserEligible(user.rank)) {
-            final date = DateTime(
-              event.startTime.year,
-              event.startTime.month,
-              event.startTime.day,
-            );
-
-            if (eventsByDate[date] == null) {
-              eventsByDate[date] = [];
+            for (final date in _expandDates(event)) {
+              eventsByDate[date] ??= [];
+              eventsByDate[date]!.add(event);
             }
-            eventsByDate[date]!.add(event);
           }
         }
       }
@@ -111,9 +132,22 @@ class _CalendarState extends State<Calendar> {
     }
   }
 
+  // List<EventModel> _getEventsForDay(DateTime day) {
+  //   final normDay = DateTime(day.year, day.month, day.day);
+  //   return _events[normDay] ?? [];
+  // }
+
+
   List<EventModel> _getEventsForDay(DateTime day) {
-    final normalizedDay = DateTime(day.year, day.month, day.day);
-    return _events[normalizedDay] ?? [];
+    // solves issue with calendar dots appearing only on four days
+    // looks for year/month/day rather than time match
+    return _events.entries
+        .where((e) =>
+    e.key.year == day.year &&
+        e.key.month == day.month &&
+        e.key.day == day.day)
+        .expand((e) => e.value)
+        .toList();
   }
 
   Future<void> _deleteEvent(EventModel event) async {
@@ -139,7 +173,7 @@ class _CalendarState extends State<Calendar> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('class deleted successfully'),
+            content: Text('Class deleted successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -147,7 +181,7 @@ class _CalendarState extends State<Calendar> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error deleting class: $e')),
+          SnackBar(content: Text('Error deleting class: $e')),
         );
       }
     }
@@ -157,19 +191,19 @@ class _CalendarState extends State<Calendar> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('delete class'),
-        content: Text('are you sure you want to delete "${event.name}"? this will remove all student enrollments.'),
+        title: const Text('Delete class'),
+        content: Text('Are you sure you want to delete "${event.name}"? this will remove all student enrollments.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('cancel'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _deleteEvent(event);
             },
-            child: const Text('delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -190,6 +224,7 @@ class _CalendarState extends State<Calendar> {
             color: Colors.white,
             padding: const EdgeInsets.all(8),
             child: TableCalendar(
+              key: ValueKey(_events.length),
               firstDay: DateTime.now().subtract(const Duration(days: 365)),
               lastDay: DateTime.now().add(const Duration(days: 365)),
               focusedDay: _focusedDay,
@@ -239,7 +274,7 @@ class _CalendarState extends State<Calendar> {
                   const Icon(Icons.admin_panel_settings, color: Color(0xFFFF0000)),
                   const SizedBox(width: 8),
                   const Text(
-                    'admin mode',
+                    'Admin Mode',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Color(0xFFFF0000),
@@ -251,7 +286,7 @@ class _CalendarState extends State<Calendar> {
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => CreateEventScreen(
+                          builder: (context) => AddEventScreen(
                             selectedDate: _selectedDay ?? DateTime.now(),
                           ),
                         ),
@@ -287,7 +322,7 @@ class _CalendarState extends State<Calendar> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'no classes scheduled',
+                    'No classes scheduled',
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey[600],
@@ -352,7 +387,7 @@ class _CalendarState extends State<Calendar> {
                     children: [
                       Expanded(
                         child: Text(
-                          event.name,
+                          event.getDisplayName(),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -386,27 +421,13 @@ class _CalendarState extends State<Calendar> {
                         IconButton(
                           icon: const Icon(Icons.delete_outline, color: Colors.red),
                           onPressed: () => _showDeleteConfirmation(event),
-                          tooltip: 'delete class',
+                          tooltip: 'Delete class',
                         ),
                         const Icon(Icons.chevron_right),
                       ],
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
                   Row(
                     children: [
                       const Icon(Icons.person, size: 16, color: Colors.grey),
@@ -437,14 +458,19 @@ class _CalendarState extends State<Calendar> {
                   if (event.requiredRanks.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Icon(Icons.military_tech, size: 16, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text(
-                          'required: ${event.requiredRanks.join(", ")}',
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 14,
+                        Expanded(
+                          child: Text(
+                            'Required: ${event.requiredRanks.join(", ")}',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],

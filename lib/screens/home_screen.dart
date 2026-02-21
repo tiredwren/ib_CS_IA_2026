@@ -5,9 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import 'calendar_screen.dart';
 import 'requirement_sheets_screen.dart';
-import 'booking_screen.dart';
 import 'proshop_screen.dart';
-import 'newsletters_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,9 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = [
     const Calendar(),
     const RequirementSheets(),
-    const OnlineBooking(),
     const Proshop(),
-    const Newsletters(),
   ];
 
   @override

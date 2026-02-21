@@ -1,40 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
-class CreateEventScreen extends StatefulWidget {
+class AddEventScreen extends StatefulWidget {
   final DateTime selectedDate;
 
-  const CreateEventScreen({super.key, required this.selectedDate});
+  const AddEventScreen({super.key, required this.selectedDate});
 
   @override
-  State<CreateEventScreen> createState() => _CreateEventScreenState();
+  State<AddEventScreen> createState() => _AddEventScreenState();
 }
 
-class _CreateEventScreenState extends State<CreateEventScreen> {
+class _AddEventScreenState extends State<AddEventScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  final _nameController = TextEditingController(); // optional
   final _instructorController = TextEditingController();
   final _priceController = TextEditingController();
-  final _maxCapacityController = TextEditingController(text: '20');
+  final _maxCapacityController = TextEditingController(text: "20");
 
-  String _selectedRoom = 'Room A';
-  String _selectedType = 'Class';
+  String _selectedRoom = "Room A";
+  String _selectedType = "Class";
   List<String> _selectedRanks = [];
+  List<String> _selectedDays = [];
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
   bool _isLoading = false;
 
-  final List<String> _rooms = ['Room A', 'Room B', 'Room C'];
-  final List<String> _types = ['Class', 'Workshop', 'Tournament', 'Event'];
+  final List<String> _rooms = ["Room A", "Room B", "Room C"];
+  final List<String> _types = ["Class", "Workshop", "Tournament", "Event"];
+  final List<String> _daysOfWeek = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
   final List<String> _allRanks = [
-    'White Belt',
-    'Yellow Belt',
-    'Green Belt',
-    'Blue Belt',
-    'Brown Belt',
-    'Red Belt',
-    'Black Belt',
+    "White Belt",
+    "Yellow Belt",
+    "Green Belt",
+    "Blue Belt",
+    "Brown Belt",
+    "Red Belt",
+    "Black Belt",
   ];
 
   @override
@@ -66,9 +75,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Future<void> _createEvent() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select at least one day")),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      // use the selected date just for the date component, time comes from time pickers
       final startDateTime = DateTime(
         widget.selectedDate.year,
         widget.selectedDate.month,
@@ -85,35 +102,40 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _endTime.minute,
       );
 
-      if (endDateTime.isBefore(startDateTime) ||
-          endDateTime.isAtSameMomentAs(startDateTime)) {
+      // validate end time is after start time
+      if (endDateTime.isBefore(startDateTime) || endDateTime.isAtSameMomentAs(startDateTime)) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('end time must be after start time')),
+          const SnackBar(content: Text("End time must be after start time")),
         );
         return;
       }
 
-      await FirebaseFirestore.instance.collection('events').add({
-        'name': _nameController.text.trim(),
-        'type': _selectedType,
-        'startTime': Timestamp.fromDate(startDateTime),
-        'endTime': Timestamp.fromDate(endDateTime),
-        'instructor': _instructorController.text.trim(),
-        'requiredRanks': _selectedRanks,
-        'price': double.tryParse(_priceController.text) ?? 0.0,
-        'room': _selectedRoom,
-        'maxCapacity': int.tryParse(_maxCapacityController.text) ?? 20,
-        'currentEnrollment': 0,
-        'description': null,
-        'requirements': null,
+      await FirebaseFirestore.instance.collection("events").add({
+        "name": _nameController.text.trim(), // optional
+        "type": _selectedType,
+        "startTime": Timestamp.fromDate(startDateTime),
+        "endTime": Timestamp.fromDate(endDateTime),
+        "instructor": _instructorController.text.trim(),
+        "requiredRanks": _selectedRanks,
+        "price": double.tryParse(_priceController.text) ?? 0.0,
+        "room": _selectedRoom,
+        "maxCapacity": int.tryParse(_maxCapacityController.text) ?? 20,
+        "currentEnrollment": 0,
+        "description": null,
+        "requirements": null,
+        "daysOfWeek": _selectedDays,
+        "startHour": _startTime.hour,
+        "startMinute": _startTime.minute,
+        "endHour": _endTime.hour,
+        "endMinute": _endTime.minute,
       });
 
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('class created successfully'),
+            content: Text("Class created successfully!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -122,7 +144,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('error creating class: $e')),
+          SnackBar(content: Text("Error creating class: $e")),
         );
       }
     }
@@ -132,7 +154,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create New Event'),
+        title: const Text("Create new class"),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -141,128 +163,45 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Card(
-                color: const Color(0xFFFF0000).withOpacity(0.1),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        color: Color(0xFFFF0000),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        DateFormat('EEEE, MMMM d, y')
-                            .format(widget.selectedDate),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              // days of week selection
+              const Text("Days of week", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _daysOfWeek.map((day) {
+                  final isSelected = _selectedDays.contains(day);
+                  return FilterChip(
+                    label: Text(day),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedDays.add(day);
+                        } else {
+                          _selectedDays.remove(day);
+                        }
+                      });
+                    },
+                    selectedColor: const Color(0xFFFF0000).withOpacity(0.3),
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Class Time',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  hintText: 'eg. M/W 4:00-5:30PM',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'please enter a class name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Type',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedType,
-                decoration: const InputDecoration(
-                  contentPadding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                ),
-                items: _types.map((type) {
-                  return DropdownMenuItem(
-                    value: type,
-                    child: Text(type),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedType = value!);
-                },
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Instructor',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _instructorController,
-                decoration: const InputDecoration(
-                  hintText: 'eg. SBN Lisa',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'please enter instructor name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Room',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedRoom,
-                decoration: const InputDecoration(
-                  contentPadding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                ),
-                items: _rooms.map((room) {
-                  return DropdownMenuItem(
-                    value: room,
-                    child: Text(room),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedRoom = value!);
-                },
-              ),
-              const SizedBox(height: 20),
+
+              // time selection
               Row(
                 children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Start Time',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
+                        const Text("Start time", style: TextStyle(fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
                         InkWell(
                           onTap: () => _selectTime(context, true),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey),
                               borderRadius: BorderRadius.circular(4),
@@ -284,18 +223,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'End Time',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
+                        const Text("End time", style: TextStyle(fontWeight: FontWeight.w500)),
                         const SizedBox(height: 8),
                         InkWell(
                           onTap: () => _selectTime(context, false),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey),
                               borderRadius: BorderRadius.circular(4),
@@ -315,10 +248,72 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Eligible rank levels (leave empty for all ranks)',
-                style: TextStyle(fontWeight: FontWeight.w500),
+
+              // class name (optional)
+              const Text("Class name (optional)", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  hintText: "eg. Advanced Sparring",
+                ),
               ),
+              const SizedBox(height: 20),
+
+              // type dropdown
+              const Text("Type", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedType,
+                decoration: const InputDecoration(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
+                items: _types.map((type) {
+                  return DropdownMenuItem(value: type, child: Text(type));
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => _selectedType = value!);
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // instructor
+              const Text("Instructor(s)", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _instructorController,
+                decoration: const InputDecoration(
+                  hintText: "eg. SBN Lisa",
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return "Please enter instructor name(s)";
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // room dropdown
+              const Text("Room", style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedRoom,
+                decoration: const InputDecoration(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
+                items: _rooms.map((room) {
+                  return DropdownMenuItem(value: room, child: Text(room));
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => _selectedRoom = value!);
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // required ranks
+              const Text("Required ranks (leave empty for all ranks)",
+                  style: TextStyle(fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -337,49 +332,48 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         }
                       });
                     },
-                    selectedColor:
-                    const Color(0xFFFF0000).withOpacity(0.3),
+                    selectedColor: const Color(0xFFFF0000).withOpacity(0.3),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Max Capacity',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
+
+              // max capacity
+              const Text("Max capacity", style: TextStyle(fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _maxCapacityController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  hintText: '20',
+                  hintText: "20",
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter max capacity';
+                    return "Please enter max capacity";
                   }
                   final capacity = int.tryParse(value);
                   if (capacity == null || capacity <= 0) {
-                    return 'Please enter a valid number';
+                    return "Please enter a valid number";
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Price (optional)',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
+
+              // price
+              const Text("price (optional)", style: TextStyle(fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _priceController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  hintText: '0.00',
+                  hintText: "0.00",
                   prefixText: '\$ ',
                 ),
               ),
               const SizedBox(height: 32),
+
+              // create button
               SizedBox(
                 height: 50,
                 child: ElevatedButton(
@@ -390,11 +384,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     width: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor:
-                      AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                      : const Text('Create Event'),
+                      : const Text("Create Class"),
                 ),
               ),
             ],
