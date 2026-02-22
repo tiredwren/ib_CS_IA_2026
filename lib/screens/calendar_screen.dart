@@ -228,6 +228,53 @@ class _CalendarState extends State<Calendar> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: false,
+        title: const Text(
+          'Calendar',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
+        actions: [
+          if (isAdmin) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 12),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddEventScreen(
+                          selectedDate: _selectedDay ?? DateTime.now(),
+                        ),
+                      ),
+                    );
+                    if (result == true) _loadEvents();
+                  },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Create class'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFCC0000),
+                    overlayColor: Colors.transparent,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -278,37 +325,6 @@ class _CalendarState extends State<Calendar> {
           const SizedBox(height: 10,),
           const Divider(height: 1),
 
-          // create class button
-          if (isAdmin)
-            Padding(
-              padding: const EdgeInsets.only(top: 2, right: 12),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AddEventScreen(
-                          selectedDate: _selectedDay ?? DateTime.now(),
-                        ),
-                      ),
-                    );
-                    if (result == true) _loadEvents();
-                  },
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Create class'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFFCC0000),
-                    overlayColor: Colors.transparent,
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
           // event list
           Expanded(
             child: _selectedEvents.isEmpty
