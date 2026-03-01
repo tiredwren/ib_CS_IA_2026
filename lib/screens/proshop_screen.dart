@@ -279,7 +279,16 @@ class _ProshopState extends State<Proshop> {
           child: Divider(height: 1),
         ),
         actions: [
-          if (isAdmin) ...[
+          if (!isAdmin) ...[
+            IconButton(
+              icon: const Icon(Icons.history_outlined, size: 22),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => PurchaseHistoryScreen(userId: auth.currentUserModel!.uid)),
+              ),
+            ),
+          ]
+          else ...[
             IconButton(
               icon: const Icon(Icons.history_outlined, size: 22),
               onPressed: () => Navigator.push(
