@@ -231,7 +231,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ],
 
                   // show position and admin code for admins
-                  if (_isAdminSignup) ...[
+                  if (_isAdminSignup) ...[ // user has selected to register as admin
                     const Text(
                       "Position",
                       style: TextStyle(

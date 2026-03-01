@@ -143,8 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   index: 1,
                 ),
                 _buildNavItem(
-                  icon: Icons.event_available,
-                  label: 'Book',
+                  icon: Icons.store_outlined,
+                  label: 'Pro Shop',
                   index: 2,
                 ),
               ],

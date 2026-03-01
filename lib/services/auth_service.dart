@@ -17,7 +17,7 @@ class AuthService extends ChangeNotifier {
   UserModel? _currentUserModel;
   UserModel? get currentUserModel => _currentUserModel;
 
-  // add constructor to load user data on app start
+  // constructor to load user data on app start
   AuthService() {
     // listen to auth state changes and load user data when user logs in
     _auth.authStateChanges().listen((User? user) {
