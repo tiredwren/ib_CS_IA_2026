@@ -21,7 +21,6 @@ class _RequirementSheetsState extends State<RequirementSheets> {
   String _currentRank = 'White Belt';
 
   @override
-  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
@@ -111,6 +110,9 @@ class _RequirementSheetsState extends State<RequirementSheets> {
       );
     }
 
+    // _viewingRank is set async in _init, guard until it's ready
+    if (_viewingRank == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     final previousRanks = _previousRanks(_currentRank);
     final reqs = _requirementsFor(_viewingRank!);
 
@@ -122,83 +124,118 @@ class _RequirementSheetsState extends State<RequirementSheets> {
       }
     }
 
+    final progress = total == 0 ? 0.0 : done / total;
+
     return Scaffold(
+      backgroundColor: Colors.white,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              color: const Color(0xFFCC0000),
-              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Current Rank',
-                    style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _currentRank,
-                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, height: 1.1),
-                  ),
-                  if (user?.program != null) ...[
-                    const SizedBox(height: 4),
-                    Text(user!.program, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
+          // rank info card at the top
           SliverToBoxAdapter(
             child: Container(
               color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (previousRanks.isNotEmpty) ...[
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _viewingRank,
-                        isExpanded: true,
-                        icon: const Icon(Icons.unfold_more, size: 18),
-                        style: const TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w500),
-                        items: [
-                          DropdownMenuItem(value: _currentRank, child: Text('$_currentRank — current')),
-                          ...previousRanks.map((r) => DropdownMenuItem(value: r, child: Text(r))),
-                        ],
-                        onChanged: (rank) async {
-                          if (rank == null) return;
-                          setState(() => _viewingRank = rank);
-                          await _loadChecked(rank);
-                        },
-                      ),
+                  // rank info
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCC0000),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const Divider(height: 1),
-                    const SizedBox(height: 14),
-                  ],
-                  if (reqs != null) ...[
-                    Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('$done of $total completed', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-                        const Spacer(),
-                        Text(
-                          total == 0 ? '' : '${((done / total) * 100).round()}%',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFCC0000)),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Current Rank',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 11,
+                                      letterSpacing: 0.8,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _currentRank,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  if (user?.program != null && user!.program.isNotEmpty)
+                                    Text(
+                                      user.program,
+                                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            // big % on the right so progress is immediately visible
+                            Text(
+                              '${(progress * 100).round()}%',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              '$done of $total completed',
+                              style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.7)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 4,
+                            backgroundColor: Colors.white.withOpacity(0.25),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    LinearProgressIndicator(
-                      value: total == 0 ? 0 : done / total,
-                      minHeight: 3,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFCC0000)),
+                  ),
+
+                  // only show if student has previous ranks to view
+                  if (previousRanks.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: _viewingRank,
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      ),
+                      items: [
+                        DropdownMenuItem(value: _currentRank, child: Text('$_currentRank (current)')),
+                        ...previousRanks.map((r) => DropdownMenuItem(value: r, child: Text(r))),
+                      ],
+                      onChanged: (rank) async {
+                        if (rank == null) return;
+                        setState(() => _viewingRank = rank);
+                        await _loadChecked(rank);
+                      },
                     ),
-                    const SizedBox(height: 16),
                   ],
                 ],
               ),
@@ -209,71 +246,109 @@ class _RequirementSheetsState extends State<RequirementSheets> {
             SliverFillRemaining(
               child: Center(
                 child: Text(
-                  'Requirements for $_viewingRank\ncoming soon.',
+                  'Requirements for $_viewingRank\ncoming soon',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[500], fontSize: 15),
+                  style: TextStyle(color: Colors.grey[400], fontSize: 15),
                 ),
               ),
             )
           else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, i) => _buildCategory(reqs.categories[i]),
-                childCount: reqs.categories.length,
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, i) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: _buildCategory(reqs.categories[i]),
+                  ),
+                  childCount: reqs.categories.length,
+                ),
               ),
             ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
       ),
     );
   }
 
   Widget _buildCategory(RequirementCategory cat) {
-    final allDone = cat.items.every((i) => _checkedIds.contains(i.id));
+    final items = cat.items;
+    final allDone = items.every((i) => _checkedIds.contains(i.id));
+    final doneCnt = items.where((i) => _checkedIds.contains(i.id)).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // category header row with done count
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
               Text(
                 cat.name.toUpperCase(),
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: allDone ? Colors.grey[400] : Colors.grey[500]),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                  color: allDone ? Colors.grey[400] : Colors.grey[500],
+                ),
               ),
-              if (allDone) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.check_circle, size: 13, color: Colors.grey[400]),
-              ],
+              const Spacer(),
+              if (allDone)
+                Icon(Icons.check_circle, size: 13, color: Colors.grey[400])
+              else
+                Text(
+                  '$doneCnt/${items.length}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                ),
             ],
           ),
         ),
-        ...cat.items.map((item) => _buildItem(item)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Divider(height: 1, color: Colors.grey[100]),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            children: items.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              final last = idx == items.length - 1;
+              return _buildItem(item, idx, last);
+            }).toList(),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildItem(RequirementItem item) {
+  Widget _buildItem(RequirementItem item, int idx, bool last) {
     final checked = _checkedIds.contains(item.id);
 
-    return InkWell(
-      onTap: () => _toggleItem(item.id, !checked),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 40,
-              height: 44,
-              child: Center(
-                child: SizedBox(
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => _toggleItem(item.id, !checked),
+          borderRadius: BorderRadius.vertical(
+            top: idx == 0 ? const Radius.circular(4) : Radius.zero,
+            bottom: last ? const Radius.circular(4) : Radius.zero,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    item.text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      color: checked ? Colors.grey[400] : Colors.black87,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
                   width: 20,
                   height: 20,
                   child: Checkbox(
@@ -285,20 +360,16 @@ class _RequirementSheetsState extends State<RequirementSheets> {
                     onChanged: (v) => _toggleItem(item.id, v ?? false),
                   ),
                 ),
-              ),
+              ],
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  item.text,
-                  style: TextStyle(fontSize: 14, height: 1.4, color: checked ? Colors.grey[400] : Colors.grey[850] ?? Colors.black87),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        if (!last)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Divider(height: 1, color: Colors.grey.shade100),
+          ),
+      ],
     );
   }
 }
