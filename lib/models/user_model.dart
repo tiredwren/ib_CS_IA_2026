@@ -9,8 +9,13 @@ class UserModel {
   final String lastName;
   final String program;
   final String rank;
-  final String role; // 'student' or 'admin'
+  final String role;
   final DateTime createdAt;
+  // payment fields set by admin in the roster edit sheet
+  final double? monthlyRate;
+  final DateTime? nextPaymentDate;
+  final String? paymentMethod;
+  final String? notes;
 
   UserModel({
     required this.uid,
@@ -21,10 +26,14 @@ class UserModel {
     required this.rank,
     this.role = 'student',
     required this.createdAt,
+    this.monthlyRate,
+    this.nextPaymentDate,
+    this.paymentMethod,
+    this.notes,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
     return UserModel(
       uid: doc.id,
       email: data['email'] ?? '',
@@ -34,6 +43,10 @@ class UserModel {
       rank: data['rank'] ?? 'White Belt',
       role: data['role'] ?? 'student',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      monthlyRate: (data['monthlyRate'] as num?)?.toDouble(),
+      nextPaymentDate: (data['nextPaymentDate'] as Timestamp?)?.toDate(),
+      paymentMethod: data['paymentMethod'] as String?,
+      notes: data['notes'] as String?,
     );
   }
 
@@ -46,6 +59,10 @@ class UserModel {
       'rank': rank,
       'role': role,
       'createdAt': Timestamp.fromDate(createdAt),
+      if (monthlyRate != null) 'monthlyRate': monthlyRate,
+      if (nextPaymentDate != null) 'nextPaymentDate': Timestamp.fromDate(nextPaymentDate!),
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+      if (notes != null) 'notes': notes,
     };
   }
 

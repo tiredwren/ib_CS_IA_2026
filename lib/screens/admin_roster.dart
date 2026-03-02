@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../requirement_data.dart';
+import '../services/email_service.dart';
 
 class ClassRoster {
   final EventModel? event;
@@ -66,7 +67,6 @@ class _AdminRosterViewState extends State<AdminRosterView> {
         return minIdx(a.students).compareTo(minIdx(b.students));
       });
 
-      // students with no active enrollment
       final unenrolled = userMap.values
           .where((u) => !enrolledUids.contains(u.uid) && u.role != 'admin')
           .toList();
@@ -81,23 +81,76 @@ class _AdminRosterViewState extends State<AdminRosterView> {
       });
     } catch (e) {
       setState(() => _loading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
-  Future<void> _save(String uid, String rank, String program) async {
+  Future<void> _save(String uid, String rank, String program, {
+    double? monthlyRate,
+    DateTime? nextPaymentDate,
+    String? paymentMethod,
+    String? notes,
+  }) async {
     await FirebaseFirestore.instance.collection('users').doc(uid).update({
       'rank': rank,
       'program': program,
+      if (monthlyRate != null) 'monthlyRate': monthlyRate,
+      if (nextPaymentDate != null) 'nextPaymentDate': Timestamp.fromDate(nextPaymentDate),
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+      if (notes != null) 'notes': notes,
     });
     await _load();
+  }
+
+  // logs payment to firestore and triggers confirmation email
+  Future<void> _markPaymentReceived(UserModel student) async {
+    final now = DateTime.now();
+
+    // write to payments collection so student can see history
+    await FirebaseFirestore.instance.collection('payments').add({
+      'userId': student.uid,
+      'amount': student.monthlyRate ?? 0,
+      'description': 'Monthly Tuition',
+      'paymentMethod': student.paymentMethod ?? 'unknown',
+      'date': Timestamp.fromDate(now),
+    });
+
+    // advance nextPaymentDate by one month
+    final next = student.nextPaymentDate != null
+        ? DateTime(student.nextPaymentDate!.year, student.nextPaymentDate!.month + 1, student.nextPaymentDate!.day)
+        : DateTime(now.year, now.month + 1, now.day);
+
+    await FirebaseFirestore.instance.collection('users').doc(student.uid).update({
+      'nextPaymentDate': Timestamp.fromDate(next),
+    });
+
+    // send confirmation email via vercel backend
+    await EmailService.paymentConfirmation(
+      userId: student.uid,
+      amount: student.monthlyRate ?? 0,
+      description: 'Monthly Tuition',
+    );
+
+    await _load();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment recorded for ${student.fullName}')),
+      );
+    }
   }
 
   void _showEdit(UserModel student) {
     var rank = student.rank;
     var program = student.program;
+    var rateController = TextEditingController(
+      text: student.monthlyRate != null ? student.monthlyRate!.toStringAsFixed(2) : '',
+    );
+    var notesController = TextEditingController(text: student.notes ?? '');
+    var paymentMethod = student.paymentMethod ?? 'cash';
+    var nextPaymentDate = student.nextPaymentDate;
+
+    final methods = ['cash', 'check', 'card', 'other'];
 
     showModalBottomSheet(
       context: context,
@@ -110,82 +163,215 @@ class _AdminRosterViewState extends State<AdminRosterView> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36, height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              Text(student.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-              Text(student.email, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-              const SizedBox(height: 24),
-              Text('Belt Rank',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500], letterSpacing: 0.8)),
-              const SizedBox(height: 8),
-              DropdownButtonHideUnderline(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: DropdownButton<String>(
-                    value: rank,
-                    isExpanded: true,
-                    items: rankOrder.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                    onChanged: (v) { if (v != null) setModal(() => rank = v); },
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36, height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text('Program',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500], letterSpacing: 0.8)),
-              const SizedBox(height: 8),
-              TextFormField(
-                initialValue: program,
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                Text(student.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                Text(student.email, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                const SizedBox(height: 24),
+
+                _sectionLabel('Belt Rank'),
+                const SizedBox(height: 8),
+                _dropdown(
+                  value: rank,
+                  items: rankOrder,
+                  onChanged: (v) { if (v != null) setModal(() => rank = v); },
                 ),
-                onChanged: (v) => program = v,
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _save(student.uid, rank, program);
+                const SizedBox(height: 16),
+
+                _sectionLabel('Program'),
+                const SizedBox(height: 8),
+                _textField(controller: TextEditingController(text: program), onChanged: (v) => program = v),
+                const SizedBox(height: 24),
+
+                // payment section
+                Divider(color: Colors.grey[100]),
+                const SizedBox(height: 16),
+                _sectionLabel('Payment'),
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Monthly rate', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                          const SizedBox(height: 6),
+                          _textField(
+                            controller: rateController,
+                            prefix: '\$',
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Payment method', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                          const SizedBox(height: 6),
+                          _dropdown(
+                            value: paymentMethod,
+                            items: methods,
+                            onChanged: (v) { if (v != null) setModal(() => paymentMethod = v); },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                Text('Next payment date', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: nextPaymentDate ?? DateTime.now(),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) setModal(() => nextPaymentDate = picked);
                   },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFCC0000),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      nextPaymentDate != null
+                          ? '${nextPaymentDate!.month}/${nextPaymentDate!.day}/${nextPaymentDate!.year}'
+                          : 'Tap to set date',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: nextPaymentDate != null ? Colors.black87 : Colors.grey[400],
+                      ),
+                    ),
                   ),
-                  child: const Text('Save', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+
+                Text('Notes', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                const SizedBox(height: 6),
+                _textField(controller: notesController, maxLines: 3),
+                const SizedBox(height: 16),
+
+                // mark payment received — only show if student has a rate set
+                if (student.monthlyRate != null)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _markPaymentReceived(student);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFCC0000)),
+                        foregroundColor: const Color(0xFFCC0000),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text(
+                        'Mark payment received — \$${student.monthlyRate!.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _save(
+                        student.uid, rank, program,
+                        monthlyRate: double.tryParse(rateController.text),
+                        nextPaymentDate: nextPaymentDate,
+                        paymentMethod: paymentMethod,
+                        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                      );
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFCC0000),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Save', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  // small helpers to avoid repeating decoration code
+  Widget _sectionLabel(String text) => Text(
+    text,
+    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500], letterSpacing: 0.8),
+  );
+
+  Widget _dropdown({required String value, required List<String> items, required ValueChanged<String?> onChanged}) =>
+      DropdownButtonHideUnderline(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            items: items.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+            onChanged: onChanged,
+          ),
+        ),
+      );
+
+  Widget _textField({
+    required TextEditingController controller,
+    ValueChanged<String>? onChanged,
+    String? prefix,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) =>
+      TextFormField(
+        controller: controller,
+        onChanged: onChanged,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          prefixText: prefix,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     if (_rosters.isEmpty) {
-      return Center(
-        child: Text('No enrolled students.', style: TextStyle(fontSize: 14, color: Colors.grey[400])),
-      );
+      return Center(child: Text('No enrolled students', style: TextStyle(fontSize: 14, color: Colors.grey[400])));
     }
 
     return ListView.builder(
@@ -238,6 +424,18 @@ class _AdminRosterViewState extends State<AdminRosterView> {
                                   ],
                                 ),
                               ),
+                              // show a small indicator if payment is coming up soon
+                              if (s.nextPaymentDate != null && s.nextPaymentDate!.difference(DateTime.now()).inDays <= 3)
+                                Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                  ),
+                                  child: Text('Due soon', style: TextStyle(fontSize: 11, color: Colors.orange[700], fontWeight: FontWeight.w600)),
+                                ),
                               Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
                             ],
                           ),

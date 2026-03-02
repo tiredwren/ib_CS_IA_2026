@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
+import '../services/email_service.dart';
 import 'add_product_screen.dart';
 import 'purchase_history_screen.dart';
 
@@ -243,6 +244,13 @@ class _ProshopState extends State<Proshop> {
         'status': 'pending',
         'paymentMethod': 'pending',
       });
+
+      await EmailService.purchaseConfirmation(
+        userId: user.uid,
+        productName: product.name,
+        price: product.price,
+        size: selectedSize,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
