@@ -1,5 +1,3 @@
-// navigation between screens (visible when user logged in)
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -7,27 +5,29 @@ import 'calendar_screen.dart';
 import 'requirement_sheets_screen.dart';
 import 'proshop_screen.dart';
 import 'settings_screen.dart';
+import 'admin_roster.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
-  final List<Widget> _screens = [
-    const Calendar(),
-    const RequirementSheets(),
-    const Proshop(),
-  ];
+class _HomeState extends State<HomeScreen> {
+  int _idx = 0;
 
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
     final user = auth.currentUserModel;
+    final isAdmin = auth.isAdmin;
+
+    final screens = [
+      const Calendar(),
+      isAdmin ? const _RosterTab() : const RequirementSheets(),
+      const Proshop(),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -41,7 +41,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         centerTitle: true,
         actions: [
-          // role badge
           Padding(
             padding: const EdgeInsets.only(right: 4),
             child: Center(
@@ -57,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Icon(Icons.person, size: 16),
                     const SizedBox(width: 4),
                     Text(
-                      user?.role == 'admin' ? 'Admin' : 'Student',
+                      isAdmin ? 'Admin' : 'Student',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ],
@@ -65,7 +64,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () => Navigator.push(
@@ -75,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: _screens[_selectedIndex],
+      body: screens[_idx],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFFCC0000),
@@ -90,7 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _navItem(icon: Icons.calendar_today, label: 'Calendar', index: 0),
-                _navItem(icon: Icons.description, label: 'Requirements', index: 1),
+                isAdmin
+                    ? _navItem(icon: Icons.people_outline, label: 'Roster', index: 1)
+                    : _navItem(icon: Icons.description, label: 'Requirements', index: 1),
                 _navItem(icon: Icons.store_outlined, label: 'Pro Shop', index: 2),
               ],
             ),
@@ -101,13 +101,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _navItem({required IconData icon, required String label, required int index}) {
-    final selected = _selectedIndex == index;
+    final sel = _idx == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () => setState(() => _idx = index),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? Colors.white.withOpacity(0.2) : Colors.transparent,
+          color: sel ? Colors.white.withOpacity(0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -119,6 +119,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// wrap AdminRosterView in scaffold so it has individual appbar when rendered directly as a tab rather than inside RequirementSheets
+class _RosterTab extends StatelessWidget {
+  const _RosterTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        centerTitle: false,
+        title: const Text('Roster', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1)),
+      ),
+      body: const AdminRosterView(),
     );
   }
 }

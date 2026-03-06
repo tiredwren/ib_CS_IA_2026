@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import '../models/requirement_models.dart';
 import '../requirement_data.dart';
-import 'admin_roster.dart';
 
 class RequirementSheets extends StatefulWidget {
   const RequirementSheets({super.key});
@@ -29,11 +28,6 @@ class _RequirementSheetsState extends State<RequirementSheets> {
   Future<void> _init() async {
     final auth = Provider.of<AuthService>(context, listen: false);
     final user = auth.currentUserModel;
-
-    if (auth.isAdmin) {
-      setState(() => _isLoading = false);
-      return;
-    }
 
     _uid = user?.uid;
     _currentRank = user?.rank ?? 'White Belt';
@@ -93,22 +87,6 @@ class _RequirementSheetsState extends State<RequirementSheets> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
     final user = auth.currentUserModel;
-    final isAdmin = auth.isAdmin;
-
-    if (isAdmin) {
-      return Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black87,
-          elevation: 0,
-          centerTitle: false,
-          title: const Text('Students by Class', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-          bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1)),
-        ),
-        backgroundColor: Colors.white,
-        body: const AdminRosterView(),
-      );
-    }
 
     // _viewingRank is set async in _init, guard until it's ready
     if (_viewingRank == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
