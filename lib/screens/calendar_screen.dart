@@ -1,6 +1,3 @@
-// filtering available classes based on rank/age/availability status
-// admins can see all classes and manage them
-
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +7,8 @@ import '../services/auth_service.dart';
 import '../models/user_model.dart';
 import 'class_manager.dart';
 import 'add_event_screen.dart';
+import '../models/event_model.dart';
+import '../models/enrollment_model.dart';
 
 class Calendar extends StatefulWidget {
   const Calendar({super.key});
@@ -84,25 +83,22 @@ class _CalendarState extends State<Calendar> {
           }
         }
       } else {
-        final enrollmentsSnapshot = await FirebaseFirestore.instance
-            .collection('enrollments')
-            .where('userId', isEqualTo: user.uid)
-            .where('isActive', isEqualTo: true)
-            .get();
+        final enrSnap = await FirebaseFirestore.instance
+          .collection('enrollments')
+          .where('userId', isEqualTo: user.uid)
+          .where('isActive', isEqualTo: true)
+          .get();
+      final enrIds = enrSnap.docs.map((d) => d.data()['eventId'] as String).toSet();
 
-        final enrolledEventIds = enrollmentsSnapshot.docs
-            .map((doc) => doc.data()['eventId'] as String)
-            .toSet();
-
-        for (var doc in eventsSnapshot.docs) {
-          final event = EventModel.fromFirestore(doc);
-          if (enrolledEventIds.contains(event.id) || event.isUserEligible(user.rank)) {
-            for (final date in _expandDates(event)) {
-              eventsByDate[date] ??= [];
-              eventsByDate[date]!.add(event);
-            }
+      for (var doc in eventsSnapshot.docs) {
+        final event = EventModel.fromFirestore(doc);
+        if (event.isUserEligible(user.rank) || enrIds.contains(event.id)) {
+          for (final date in _expandDates(event)) {
+            eventsByDate[date] ??= [];
+            eventsByDate[date]!.add(event);
           }
         }
+      }
       }
 
       setState(() {
@@ -121,14 +117,15 @@ class _CalendarState extends State<Calendar> {
   }
 
   List<EventModel> _getEventsForDay(DateTime day) {
-    // match by date only, not time, to fix dots appearing on only a few days
-    return _events.entries
-        .where((e) =>
-    e.key.year == day.year &&
-        e.key.month == day.month &&
-        e.key.day == day.day)
-        .expand((e) => e.value)
-        .toList();
+    List<EventModel> result = [];
+    for (final entry in _events.entries) {
+      if (entry.key.year == day.year &&
+          entry.key.month == day.month &&
+          entry.key.day == day.day) {
+        result.addAll(entry.value);
+      }
+    }
+    return result;
   }
 
   Future<void> _deleteEvent(EventModel event) async {
@@ -221,6 +218,130 @@ class _CalendarState extends State<Calendar> {
     );
   }
 
+  // student clicks class card > detail page with request button shown
+  void _showStudentClassDetail(EventModel event, EnrollmentModel? enr) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _StudentClassSheet(
+        event: event,
+        enrollment: enr,
+        onRequest: () {
+          Navigator.pop(ctx);
+          _requestEnrollment(event);
+        },
+        onCancel: () {
+          Navigator.pop(ctx);
+          _cancelRequest(event, enr!);
+        },
+      ),
+    );
+  }
+
+  Future<void> _requestEnrollment(EventModel event) async {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final user = auth.currentUserModel;
+    if (user == null) return;
+
+    try {
+      // check if class is full to determine initial status
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event.id)
+          .get();
+      final current = (eventDoc.data()?['currentEnrollment'] as int?) ?? 0;
+      final max = event.maxCapacity;
+      final full = current >= max;
+
+      int waitPos = 0;
+      if (full) {
+        final waitSnap = await FirebaseFirestore.instance
+            .collection('enrollments')
+            .where('eventId', isEqualTo: event.id)
+            .where('status', isEqualTo: 'waitlisted')
+            .get();
+        waitPos = waitSnap.docs.length;
+      }
+
+      await FirebaseFirestore.instance.collection('enrollments').add({
+        'userId': user.uid,
+        'eventId': event.id,
+        'status': full ? 'waitlisted' : 'pending',
+        'enrolledAt': Timestamp.now(),
+        'isActive': true,
+        'isPaid': false,
+        'waitlistPosition': full ? waitPos : 0,
+      });
+
+      await _loadEvents();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(full
+                ? 'Added to waitlist; you\'re number ${waitPos + 1}'
+                : 'Request sent, waiting for admin confirmation'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelRequest(EventModel event, EnrollmentModel enrollment) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('enrollments')
+          .where('userId', isEqualTo: enrollment.userId)
+          .where('eventId', isEqualTo: event.id)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (snap.docs.isEmpty) return;
+
+      final doc = snap.docs.first;
+      final cancelPos = doc.data()['waitlistPosition'] as int? ?? 0;
+      final wasWait = enrollment.status == 'waitlisted';
+
+      await doc.reference.update({'isActive': false});
+
+      if (wasWait) {
+        final behind = await FirebaseFirestore.instance
+            .collection('enrollments')
+            .where('eventId', isEqualTo: event.id)
+            .where('status', isEqualTo: 'waitlisted')
+            .where('isActive', isEqualTo: true)
+            .get();
+
+        for (final d in behind.docs) {
+          final pos = d.data()['waitlistPosition'] as int? ?? 0;
+          if (pos > cancelPos) {
+            await d.reference.update({'waitlistPosition': pos - 1});
+          }
+        }
+      }
+
+      await _loadEvents();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request cancelled')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
@@ -242,7 +363,7 @@ class _CalendarState extends State<Calendar> {
           child: Divider(height: 1),
         ),
         actions: [
-          if (isAdmin) ...[
+          if (isAdmin)
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 12),
               child: Align(
@@ -264,22 +385,17 @@ class _CalendarState extends State<Calendar> {
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFFCC0000),
                     overlayColor: Colors.transparent,
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
             ),
-          ],
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
-          // calendar
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -322,10 +438,8 @@ class _CalendarState extends State<Calendar> {
               ),
             ),
           ),
-          const SizedBox(height: 10,),
+          const SizedBox(height: 10),
           const Divider(height: 1),
-
-          // event list
           Expanded(
             child: _selectedEvents.isEmpty
                 ? Center(
@@ -365,8 +479,29 @@ class _CalendarState extends State<Calendar> {
         final enrollment = snapshot.hasData && snapshot.data != null
             ? EnrollmentModel.fromFirestore(snapshot.data!)
             : null;
-        final isWaitlisted = enrollment?.status == 'waitlisted';
-        final isEnrolled = enrollment != null;
+        final status = enrollment?.status;
+
+        Color? badgeColor;
+        Color? badgeBorder;
+        Color? badgeText;
+        String? badgeLabel;
+
+        if (status == 'enrolled') {
+          badgeLabel = 'Enrolled';
+          badgeColor = Colors.green.shade50;
+          badgeBorder = Colors.green.shade200;
+          badgeText = Colors.green.shade700;
+        } else if (status == 'pending') {
+          badgeLabel = 'Requested';
+          badgeColor = Colors.blue.shade50;
+          badgeBorder = Colors.blue.shade200;
+          badgeText = Colors.blue.shade700;
+        } else if (status == 'waitlisted') {
+          badgeLabel = 'Waitlisted';
+          badgeColor = Colors.orange.shade50;
+          badgeBorder = Colors.orange.shade200;
+          badgeText = Colors.orange.shade700;
+        }
 
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
@@ -388,13 +523,12 @@ class _CalendarState extends State<Calendar> {
               );
               _loadEvents();
             }
-                : null,
+                : () => _showStudentClassDetail(event, enrollment),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // time column
                   SizedBox(
                     width: 68,
                     child: Text(
@@ -403,8 +537,6 @@ class _CalendarState extends State<Calendar> {
                     ),
                   ),
                   const SizedBox(width: 10),
-
-                  // event details
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,28 +573,23 @@ class _CalendarState extends State<Calendar> {
                       ],
                     ),
                   ),
-
-                  // status badge or admin controls
-                  if (isEnrolled && !isAdmin)
+                  if (badgeLabel != null && !isAdmin)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: isWaitlisted ? Colors.orange.shade50 : Colors.green.shade50,
+                        color: badgeColor,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isWaitlisted ? Colors.orange.shade200 : Colors.green.shade200,
-                        ),
+                        border: Border.all(color: badgeBorder!),
                       ),
                       child: Text(
-                        isWaitlisted ? 'Waitlist' : 'Enrolled',
+                        badgeLabel,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: isWaitlisted ? Colors.orange.shade700 : Colors.green.shade700,
+                          color: badgeText,
                         ),
                       ),
                     ),
-
                   if (isAdmin)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -477,12 +604,152 @@ class _CalendarState extends State<Calendar> {
                         Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
                       ],
                     ),
+                  if (!isAdmin && badgeLabel == null)
+                    Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+// bottom sheet shown to student when class card clicked
+class _StudentClassSheet extends StatelessWidget {
+  final EventModel event;
+  final EnrollmentModel? enrollment;
+  final VoidCallback onRequest;
+  final VoidCallback onCancel;
+
+  const _StudentClassSheet({
+    required this.event,
+    required this.enrollment,
+    required this.onRequest,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final timeStr =
+        '${DateFormat.jm().format(event.startTime)} – ${DateFormat.jm().format(event.endTime)}';
+    final status = enrollment?.status;
+    final isFull = event.currentEnrollment >= event.maxCapacity;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          Text(
+            event.getDisplayName(),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${event.instructor} · ${event.room}',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+          ),
+          const SizedBox(height: 20),
+
+          _detailRow('Time', timeStr),
+          _detailRow('Capacity',
+              '${event.currentEnrollment}/${event.maxCapacity}${isFull ? ' · Full' : ''}'),
+          if (event.requiredRanks.isNotEmpty)
+            _detailRow('Ranks', event.requiredRanks.join(', ')),
+          if (event.price > 0)
+            _detailRow('Price', '\$${event.price.toStringAsFixed(2)}'),
+
+          const SizedBox(height: 28),
+
+          // button changes based on current enrollment status
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: status == null
+                ? FilledButton(
+              onPressed: onRequest,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFCC0000),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text(
+                isFull ? 'Join waitlist' : 'Request to join',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            )
+                : status == 'enrolled'
+                ? Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Text(
+                'Enrolled',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green.shade700,
+                ),
+              ),
+            )
+                : OutlinedButton(
+              onPressed: onCancel,
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.grey[300]!),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text(
+                status == 'waitlisted'
+                    ? 'Cancel waitlist request'
+                    : 'Cancel request',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          ),
+        ],
+      ),
     );
   }
 }

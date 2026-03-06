@@ -92,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Image.asset(
                     'assets/images/logo.jpeg',
                     height: 100,
-                    errorBuilder: (context, error, stackTrace) { // fallback logo if image fails
+                    errorBuilder: (context, error, stackTrace) {
                       return Container(
                         height: 100,
                         alignment: Alignment.center,
@@ -116,31 +116,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
-
-                  // // student indicator
-                  // Row(
-                  //   mainAxisAlignment: MainAxisAlignment.center,
-                  //   children: [
-                  //     Container(
-                  //       padding: const EdgeInsets.symmetric(
-                  //         horizontal: 12,
-                  //         vertical: 6,
-                  //       ),
-                  //       decoration: BoxDecoration(
-                  //         color: Colors.grey[200],
-                  //         borderRadius: BorderRadius.circular(20),
-                  //       ),
-                  //       child: const Row(
-                  //         children: [
-                  //           Icon(Icons.person, size: 16),
-                  //           SizedBox(width: 4),
-                  //           Text('Student'),
-                  //         ],
-                  //       ),
-                  //     ),
-                  //   ],
-                  // ),
-                  // const SizedBox(height: 32),
 
                   // Email field
                   const Text(
@@ -226,6 +201,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 60,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCC0000),
+                        foregroundColor: Colors.white,
+                      ),
                       child: _isLoading
                           ? const SizedBox(
                         height: 20,
@@ -269,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // divider between login/"or facebook"
+                  // divider
                   const Row(
                     children: [
                       Expanded(child: Divider()),
@@ -282,7 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // facebook login button NEED OAUTH TO IMPLEMENT
+                  // facebook login button
                   SizedBox(
                     height: 50,
                     child: OutlinedButton.icon(

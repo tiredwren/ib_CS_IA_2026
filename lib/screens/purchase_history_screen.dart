@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/user_model.dart';
+import '../models/purchase_model.dart';
 
 class PurchaseHistoryScreen extends StatefulWidget {
   // if userId is passed, shows only that user's purchases (student view)
@@ -174,7 +175,12 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   }
 
   Widget _buildMonth(String monthYear, List<PurchaseModel> purchases, bool isAdmin) {
-    final total = purchases.fold<double>(0, (s, p) => s + p.price);
+    // sum per month so header can show total without separate query
+    double total = 0;
+    for (final p in purchases) {
+      total += p.price;
+    }
+
     final parts = monthYear.split('/');
     final label = DateFormat('MMMM y').format(DateTime(int.parse(parts[1]), int.parse(parts[0])));
 
@@ -212,11 +218,14 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   }
 
   Widget _buildRow(PurchaseModel purchase, bool isAdmin, int idx, bool last) {
-    final statusColor = switch (purchase.status) {
-      'completed' => Colors.green,
-      'cancelled' => Colors.grey,
-      _ => Colors.orange,
-    };
+    Color statusColor;
+    if (purchase.status == 'completed') {
+      statusColor = Colors.green;
+    } else if (purchase.status == 'cancelled') {
+      statusColor = Colors.grey;
+    } else {
+      statusColor = Colors.orange;
+    }
 
     return InkWell(
       onTap: isAdmin ? () => _showStatusOptions(purchase) : null,

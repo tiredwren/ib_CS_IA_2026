@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../widgets/section_card.dart';
+import '../widgets/label.dart';
+import '../widgets/time_picker.dart';
 
 class AddEventScreen extends StatefulWidget {
   final DateTime selectedDate;
@@ -183,9 +186,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
             children: [
 
               // days of week
-              _SectionCard(
+              SectionCard(
                 children: [
-                  _FieldLabel('Days'),
+                  Label('Days'),
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -222,15 +225,15 @@ class _AddEventScreenState extends State<AddEventScreen> {
               ),
               const SizedBox(height: 12),
 
-              // time row
+              // change time of class
               Row(
                 children: [
                   Expanded(
-                    child: _SectionCard(
+                    child: SectionCard(
                       children: [
-                        _FieldLabel('Start time'),
+                        Label('Start time'),
                         const SizedBox(height: 10),
-                        _TimeTile(
+                        TimePicker(
                           time: _startTime.format(context),
                           onTap: () => _selectTime(true),
                         ),
@@ -239,11 +242,11 @@ class _AddEventScreenState extends State<AddEventScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _SectionCard(
+                    child: SectionCard(
                       children: [
-                        _FieldLabel('End time'),
+                        Label('End time'),
                         const SizedBox(height: 10),
-                        _TimeTile(
+                        TimePicker(
                           time: _endTime.format(context),
                           onTap: () => _selectTime(false),
                         ),
@@ -255,16 +258,16 @@ class _AddEventScreenState extends State<AddEventScreen> {
               const SizedBox(height: 12),
 
               // class details
-              _SectionCard(
+              SectionCard(
                 children: [
-                  _FieldLabel('Class name'),
+                  Label('Class name'),
                   const SizedBox(height: 6),
                   _field(
                     controller: _nameController,
                     hint: 'eg. Advanced Sparring (optional)',
                   ),
                   const SizedBox(height: 16),
-                  _FieldLabel('Instructor'),
+                  Label('Instructor'),
                   const SizedBox(height: 6),
                   _field(
                     controller: _instructorController,
@@ -277,9 +280,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
               const SizedBox(height: 12),
 
               // type and room
-              _SectionCard(
+              SectionCard(
                 children: [
-                  _FieldLabel('Type'),
+                  Label('Type'),
                   const SizedBox(height: 6),
                   _dropdown<String>(
                     value: _selectedType,
@@ -287,7 +290,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                     onChanged: (v) => setState(() => _selectedType = v!),
                   ),
                   const SizedBox(height: 16),
-                  _FieldLabel('Room'),
+                  Label('Room'),
                   const SizedBox(height: 6),
                   _dropdown<String>(
                     value: _selectedRoom,
@@ -299,9 +302,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
               const SizedBox(height: 12),
 
               // capacity and price
-              _SectionCard(
+              SectionCard(
                 children: [
-                  _FieldLabel('Max capacity'),
+                  Label('Max capacity'),
                   const SizedBox(height: 6),
                   _field(
                     controller: _maxCapacityController,
@@ -314,7 +317,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  _FieldLabel('Price (optional)'),
+                  Label('Price (optional)'),
                   const SizedBox(height: 6),
                   _field(
                     controller: _priceController,
@@ -327,9 +330,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
               const SizedBox(height: 12),
 
               // required ranks
-              _SectionCard(
+              SectionCard(
                 children: [
-                  _FieldLabel('Required ranks'),
+                  Label('Required ranks'),
                   const SizedBox(height: 2),
                   Text(
                     'Leave empty for all ranks',
@@ -367,7 +370,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
               ),
               const SizedBox(height: 28),
 
-              // submit
+              // save class
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -401,7 +404,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
     );
   }
 
-  // text field widget decoration (standard)
+  // shared text field widget decoration
   Widget _field({
     required TextEditingController controller,
     String? hint,
@@ -471,76 +474,3 @@ class _AddEventScreenState extends State<AddEventScreen> {
   }
 }
 
-// card wrapper used for each section
-class _SectionCard extends StatelessWidget {
-  final List<Widget> children;
-
-  const _SectionCard({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
-      ),
-    );
-  }
-}
-
-// small uppercase label used above fields
-class _FieldLabel extends StatelessWidget {
-  final String text;
-
-  const _FieldLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.8,
-        color: Colors.grey[500],
-      ),
-    );
-  }
-}
-
-// tappable time display tile
-class _TimeTile extends StatelessWidget {
-  final String time;
-  final VoidCallback onTap;
-
-  const _TimeTile({required this.time, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Text(
-          time,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-}

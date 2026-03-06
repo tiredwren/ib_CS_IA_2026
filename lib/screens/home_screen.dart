@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          // settings button — pushes settings_screen
+
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () => Navigator.push(

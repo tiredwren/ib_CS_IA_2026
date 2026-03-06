@@ -31,7 +31,7 @@ class EmailService {
     });
   }
 
-  // fire and forget — we don't want a failed email to block the purchase flow
+  // fire and forget so failed email doesn't hinder purchase flow
   static Future<void> _post(String path, Map<String, dynamic> body) async {
     try {
       final res = await http.post(

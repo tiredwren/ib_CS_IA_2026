@@ -1,5 +1,7 @@
+import 'event_model.dart';
 import 'user_model.dart';
 
+// modeling requirement sheet info
 class RequirementItem {
   final String id;
   final String text;
@@ -18,8 +20,9 @@ class RankRequirements {
   const RankRequirements({required this.rank, required this.categories});
 }
 
+// modeling students enrolled in classes for admin
 class ClassRoster {
-  final EventModel event;
+  final EventModel? event;
   final List<UserModel> students;
   ClassRoster({required this.event, required this.students});
 }

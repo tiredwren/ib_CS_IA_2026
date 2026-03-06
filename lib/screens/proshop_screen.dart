@@ -6,6 +6,8 @@ import '../models/user_model.dart';
 import '../services/email_service.dart';
 import 'add_product_screen.dart';
 import 'purchase_history_screen.dart';
+import '../models/purchase_model.dart';
+import '../models/product_model.dart';
 
 class Proshop extends StatefulWidget {
   const Proshop({super.key});
@@ -60,7 +62,12 @@ class _ProshopState extends State<Proshop> {
         : _products.where((p) => p.category == _selectedCategory).toList();
 
     if (!isAdmin && user != null) {
-      list = list.where((p) => p.isAvailableForRank(user.rank)).toList();
+      // can't use firestore query here since rank eligibility logic is in model
+      List<ProductModel> filtered = [];
+      for (final p in list) {
+        if (p.isAvailableForRank(user.rank)) filtered.add(p);
+      }
+      list = filtered;
     }
     return list;
   }

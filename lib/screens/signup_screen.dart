@@ -96,7 +96,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   Image.asset(
                     'assets/images/logo.jpeg',
                     height: 80,
-                    errorBuilder: (context, error, stackTrace) { // fallback logo if image fails
+                    errorBuilder: (context, error, stackTrace) {
                       return Container(
                         height: 80,
                         alignment: Alignment.center,
@@ -123,17 +123,12 @@ class _SignupScreenState extends State<SignupScreen> {
                   // first name field
                   const Text(
                     'First name',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _firstNameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter first name',
-                    ),
+                    decoration: const InputDecoration(hintText: 'Enter first name'),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your first name';
@@ -146,17 +141,12 @@ class _SignupScreenState extends State<SignupScreen> {
                   // last name field
                   const Text(
                     'Last name',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _lastNameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter last name',
-                    ),
+                    decoration: const InputDecoration(hintText: 'Enter last name'),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your last name';
@@ -169,29 +159,17 @@ class _SignupScreenState extends State<SignupScreen> {
                   // account type dropdown
                   const Text(
                     "Account type",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 8,),
+                  const SizedBox(height: 8),
                   DropdownButtonFormField<bool>(
                     value: _isAdminSignup,
                     decoration: const InputDecoration(
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16
-                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     ),
                     items: const [
-                      DropdownMenuItem(
-                        child: Text("Student"),
-                        value: false,
-                      ),
-                      DropdownMenuItem(
-                        child: Text("Admin"),
-                        value: true,
-                      ),
+                      DropdownMenuItem(value: false, child: Text("Student")),
+                      DropdownMenuItem(value: true, child: Text("Admin")),
                     ],
                     onChanged: (value) {
                       setState(() => _isAdminSignup = value!);
@@ -199,29 +177,20 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // show program dropdown for students
+                  // program dropdown (students only)
                   if (!_isAdminSignup) ...[
                     const Text(
                       'Program',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: _selectedProgram,
                       decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       ),
                       items: _programs.map((program) {
-                        return DropdownMenuItem(
-                          value: program,
-                          child: Text(program),
-                        );
+                        return DropdownMenuItem(value: program, child: Text(program));
                       }).toList(),
                       onChanged: (value) {
                         setState(() => _selectedProgram = value!);
@@ -230,21 +199,16 @@ class _SignupScreenState extends State<SignupScreen> {
                     const SizedBox(height: 20),
                   ],
 
-                  // show position and admin code for admins
-                  if (_isAdminSignup) ...[ // user has selected to register as admin
+                  // position and admin code (admins only)
+                  if (_isAdminSignup) ...[
                     const Text(
                       "Position",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _positionController,
-                      decoration: const InputDecoration(
-                        hintText: "eg. Front Desk Manager",
-                      ),
+                      decoration: const InputDecoration(hintText: "eg. Front Desk Manager"),
                       validator: (value) {
                         if (_isAdminSignup && (value == null || value.isEmpty)) {
                           return "Please enter your position";
@@ -256,10 +220,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                     const Text(
                       "Admin Code",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -269,9 +230,9 @@ class _SignupScreenState extends State<SignupScreen> {
                         hintText: "Enter admin code",
                         suffixIcon: IconButton(
                           icon: Icon(
-                              _hiddenAdminCode
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined
+                            _hiddenAdminCode
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                           ),
                           onPressed: () {
                             setState(() => _hiddenAdminCode = !_hiddenAdminCode);
@@ -291,18 +252,13 @@ class _SignupScreenState extends State<SignupScreen> {
                   // email
                   const Text(
                     'Email',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter your email',
-                    ),
+                    decoration: const InputDecoration(hintText: 'Enter your email'),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your email';
@@ -318,10 +274,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   // password
                   const Text(
                     'Password',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
@@ -357,15 +310,17 @@ class _SignupScreenState extends State<SignupScreen> {
                     height: 60,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _signUp,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFCC0000),
+                        foregroundColor: Colors.white,
+                      ),
                       child: _isLoading
                           ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                           : const Text(
@@ -385,9 +340,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     children: [
                       const Text('Already have an account? '),
                       TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                        },
+                        onPressed: () => Navigator.pop(context),
                         child: const Text(
                           'Login',
                           style: TextStyle(
@@ -400,7 +353,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // divider between signup/"or facebook"
+                  // divider
                   const Row(
                     children: [
                       Expanded(child: Divider()),
@@ -413,7 +366,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // facebook signup button NEED OAUTH TO IMPLEMENT
+                  // facebook signup button
                   SizedBox(
                     height: 50,
                     child: OutlinedButton.icon(

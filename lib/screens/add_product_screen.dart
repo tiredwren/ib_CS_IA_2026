@@ -231,7 +231,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ),
             const SizedBox(height: 24),
 
-            // in stock — plain row, no switch tile wrapper
             Row(
               children: [
                 Text(

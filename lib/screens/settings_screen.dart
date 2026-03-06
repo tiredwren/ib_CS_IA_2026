@@ -19,7 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final auth = Provider.of<AuthService>(context, listen: false);
-    // only load payments for students — admins don't have payment info
+    // only load payments for students bc admins don't have payment info
     if (!auth.isAdmin) _loadPayments();
   }
 
@@ -65,7 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
         children: [
-          // name + email — same for everyone
+          // name + email for everyone
           Text(user?.fullName ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(user?.email ?? '', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
@@ -81,8 +81,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _sectionHeader('Profile'),
             const SizedBox(height: 8),
             _infoCard([
-              _infoRow('Rank', user?.rank ?? '—'),
-              _infoRow('Program', user?.program.isNotEmpty == true ? user!.program : '—'),
+              _infoRow('Rank', user?.rank ?? '-'),
+              _infoRow('Program', user?.program.isNotEmpty == true ? user!.program : '-'),
               _infoRow('Payment method', _formatPaymentMethod(user?.paymentMethod)),
             ]),
             const SizedBox(height: 28),
@@ -259,7 +259,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   );
 
   String _formatPaymentMethod(String? method) {
-    if (method == null || method.isEmpty) return '—';
+    if (method == null || method.isEmpty) return '-';
     return method[0].toUpperCase() + method.substring(1);
   }
 }
