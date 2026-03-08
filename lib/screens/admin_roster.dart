@@ -15,7 +15,7 @@ class AdminRosterView extends StatefulWidget {
 
 class _RosterState extends State<AdminRosterView> {
   bool _loading = true;
-  List<ClassRoster> _rosters = [];
+  List<Roster> _rosters = [];
 
   @override
   void initState() {
@@ -26,18 +26,17 @@ class _RosterState extends State<AdminRosterView> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      // fetch all events
       final eventsSnap = await FirebaseFirestore.instance.collection('events').get();
+      final events = eventsSnap.docs.map((d) => EventModel.fromFirestore(d)).toList();
 
-      List<EventModel> events = [];
-      for (final d in eventsSnap.docs) {
-        events.add(EventModel.fromFirestore(d));
-      }
-
+      // only active enrollments
       final enrollSnap = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('isActive', isEqualTo: true)
           .get();
 
+      // group uids by event id
       final Map<String, List<String>> byEvent = {};
       final enrolledIds = <String>{};
       for (final doc in enrollSnap.docs) {
@@ -45,65 +44,46 @@ class _RosterState extends State<AdminRosterView> {
         final eid = d['eventId'] as String? ?? '';
         final uid = d['userId'] as String? ?? '';
         if (eid.isEmpty || uid.isEmpty) continue;
-        if (!byEvent.containsKey(eid)) byEvent[eid] = [];
-        byEvent[eid]!.add(uid);
+        byEvent.putIfAbsent(eid, () => []).add(uid);
         enrolledIds.add(uid);
       }
 
+      // fetch all users into a map for quick lookup
       final usersSnap = await FirebaseFirestore.instance.collection('users').get();
-      final Map<String, UserModel> userMap = {};
-      for (final d in usersSnap.docs) {
-        userMap[d.id] = UserModel.fromFirestore(d);
-      }
+      final Map<String, UserModel> userMap = {
+        for (final d in usersSnap.docs) d.id: UserModel.fromFirestore(d)
+      };
 
-      final rosters = <ClassRoster>[];
+      // build roster per event, sorted by rank
+      final rosters = <Roster>[];
       for (final event in events) {
         final uids = byEvent[event.id];
         if (uids == null || uids.isEmpty) continue;
 
-        List<UserModel> students = [];
-        for (final uid in uids) {
-          if (userMap.containsKey(uid)) students.add(userMap[uid]!);
-        }
+        final students = uids
+            .where((uid) => userMap.containsKey(uid))
+            .map((uid) => userMap[uid]!)
+            .toList()
+          ..sort((a, b) => rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank)));
 
-        students.sort((a, b) {
-          final aIdx = rankOrder.indexOf(a.rank);
-          final bIdx = rankOrder.indexOf(b.rank);
-          return aIdx.compareTo(bIdx);
-        });
-
-        rosters.add(ClassRoster(event: event, students: students));
+        rosters.add(Roster(event: event, students: students));
       }
 
+      // sort rosters by the lowest rank present in each class
       rosters.sort((a, b) {
-        int aMin = 999;
-        for (final s in a.students) {
-          final idx = rankOrder.indexOf(s.rank);
-          if (idx < aMin) aMin = idx;
-        }
-        int bMin = 999;
-        for (final s in b.students) {
-          final idx = rankOrder.indexOf(s.rank);
-          if (idx < bMin) bMin = idx;
-        }
-        return aMin.compareTo(bMin);
+        int minRank(Roster r) =>
+            r.students.map((s) => rankOrder.indexOf(s.rank)).fold(999, (acc, i) => i < acc ? i : acc);
+        return minRank(a).compareTo(minRank(b));
       });
 
-      List<UserModel> unenrolled = [];
-      for (final u in userMap.values) {
-        if (!enrolledIds.contains(u.uid) && u.role != 'admin') {
-          unenrolled.add(u);
-        }
-      }
-
-      unenrolled.sort((a, b) {
-        final aIdx = rankOrder.indexOf(a.rank);
-        final bIdx = rankOrder.indexOf(b.rank);
-        return aIdx.compareTo(bIdx);
-      });
+      // append unenrolled students at the bottom
+      final unenrolled = userMap.values
+          .where((u) => !enrolledIds.contains(u.uid) && u.role != 'admin')
+          .toList()
+        ..sort((a, b) => rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank)));
 
       if (unenrolled.isNotEmpty) {
-        rosters.add(ClassRoster(event: null, students: unenrolled));
+        rosters.add(Roster(event: null, students: unenrolled));
       }
 
       setState(() {
@@ -116,12 +96,16 @@ class _RosterState extends State<AdminRosterView> {
     }
   }
 
-  Future<void> _save(String uid, String rank, String program, {
-    double? monthlyRate,
-    DateTime? nextPaymentDate,
-    String? paymentMethod,
-    String? notes,
-  }) async {
+  // persist rank/program/payment changes to firestore
+  Future<void> _save(
+      String uid,
+      String rank,
+      String program, {
+        double? monthlyRate,
+        DateTime? nextPaymentDate,
+        String? paymentMethod,
+        String? notes,
+      }) async {
     await FirebaseFirestore.instance.collection('users').doc(uid).update({
       'rank': rank,
       'program': program,
@@ -133,9 +117,8 @@ class _RosterState extends State<AdminRosterView> {
     await _load();
   }
 
-  Future<void> _markPaymentReceived(UserModel student) async {
-    // check last payment date before allowing another to be recorded
-    // prevents admin from accidentally logging duplicate payments
+  Future<void> _markPaid(UserModel student) async {
+    // check last payment to avoid accidental duplicates
     final lastPaySnap = await FirebaseFirestore.instance
         .collection('payments')
         .where('userId', isEqualTo: student.uid)
@@ -146,8 +129,8 @@ class _RosterState extends State<AdminRosterView> {
     if (lastPaySnap.docs.isNotEmpty) {
       final lastDate = (lastPaySnap.docs.first.data()['date'] as Timestamp).toDate();
       final daysSince = DateTime.now().difference(lastDate).inDays;
+      // 28 days instead of strict calendar month for slight timing variance
       if (daysSince < 28) {
-        // 28 days rather than strict calendar month to account for slight timing variation
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -164,26 +147,33 @@ class _RosterState extends State<AdminRosterView> {
 
     final now = DateTime.now();
 
+    // log payment record
     await FirebaseFirestore.instance.collection('payments').add({
       'userId': student.uid,
-      'amount': student.monthlyRate ?? 0,
+      'amount': student.monthRate ?? 0,
       'description': 'Monthly Tuition',
-      'paymentMethod': student.paymentMethod ?? 'unknown',
+      'paymentMethod': student.payMeth ?? 'unknown',
       'date': Timestamp.fromDate(now),
     });
 
-    final next = student.nextPaymentDate != null
-        ? DateTime(student.nextPaymentDate!.year, student.nextPaymentDate!.month + 1, student.nextPaymentDate!.day)
+    // advance next payment date by one month
+    final next = student.nextPay != null
+        ? DateTime(
+      student.nextPay!.year,
+      student.nextPay!.month + 1,
+      student.nextPay!.day,
+    )
         : DateTime(now.year, now.month + 1, now.day);
 
     await FirebaseFirestore.instance.collection('users').doc(student.uid).update({
       'nextPaymentDate': Timestamp.fromDate(next),
     });
 
+    // send confirmation email, fire and forget
     await EmailService.paymentConfirmation(
       userId: student.uid,
-      amount: student.monthlyRate ?? 0,
-      description: 'Monthly Tuition',
+      amount: student.monthRate ?? 0,
+      desc: 'Monthly Tuition',
     );
 
     await _load();
@@ -195,17 +185,18 @@ class _RosterState extends State<AdminRosterView> {
     }
   }
 
+  // bottom sheet for editing student info + payment
   void _showEdit(UserModel student) {
     var rank = student.rank;
     var program = student.program;
     var rateCtrl = TextEditingController(
-      text: student.monthlyRate != null ? student.monthlyRate!.toStringAsFixed(2) : '',
+      text: student.monthRate != null ? student.monthRate!.toStringAsFixed(2) : '',
     );
     var notesCtrl = TextEditingController(text: student.notes ?? '');
-    var payMethod = student.paymentMethod ?? 'Cash';
-    var nextDate = student.nextPaymentDate;
+    var payMethod = student.payMeth ?? 'Cash';
+    var nextDate = student.nextPay;
 
-    final methods = ['Cash', 'Check', 'Card', 'Other'];
+    const methods = ['Cash', 'Check', 'Card', 'Other'];
 
     showModalBottomSheet(
       context: context,
@@ -223,6 +214,7 @@ class _RosterState extends State<AdminRosterView> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // drag handle
                 Center(
                   child: Container(
                     width: 36, height: 4,
@@ -290,6 +282,7 @@ class _RosterState extends State<AdminRosterView> {
 
                 Text('Next payment date', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 const SizedBox(height: 6),
+                // tap to open date picker
                 GestureDetector(
                   onTap: () async {
                     final picked = await showDatePicker(
@@ -325,10 +318,11 @@ class _RosterState extends State<AdminRosterView> {
                 _textField(controller: notesCtrl, maxLines: 3),
                 const SizedBox(height: 16),
 
-                if (student.monthlyRate != null)
+                // only show pay btn if rate is set
+                if (student.monthRate != null)
                   _PayBtn(student: student, onTap: () {
                     Navigator.pop(ctx);
-                    _markPaymentReceived(student);
+                    _markPaid(student);
                   }),
 
                 const SizedBox(height: 12),
@@ -419,10 +413,11 @@ class _RosterState extends State<AdminRosterView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // section header -- event name or "unenrolled"
             Padding(
               padding: EdgeInsets.only(top: i == 0 ? 0 : 20, bottom: 8),
               child: Text(
-                r.event?.getDisplayName() ?? 'Unenrolled',
+                r.event?.getDispName() ?? 'Unenrolled',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.4),
               ),
             ),
@@ -461,7 +456,8 @@ class _RosterState extends State<AdminRosterView> {
                                   ],
                                 ),
                               ),
-                              if (s.nextPaymentDate != null && s.nextPaymentDate!.difference(DateTime.now()).inDays <= 3)
+                              // warn if payment due within 3 days
+                              if (s.nextPay != null && s.nextPay!.difference(DateTime.now()).inDays <= 3)
                                 Container(
                                   margin: const EdgeInsets.only(right: 8),
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -494,7 +490,7 @@ class _RosterState extends State<AdminRosterView> {
   }
 }
 
-// separate widget to fetch last payment date independently
+// separate widget so it can fetch last payment date independently
 // without blocking the rest of the edit sheet from rendering
 class _PayBtn extends StatefulWidget {
   final UserModel student;
@@ -526,7 +522,7 @@ class _PayBtnState extends State<_PayBtn> {
         .get();
 
     if (snap.docs.isEmpty) {
-      // no payment history > always allow first payment
+      // no history -- always allow first payment
       setState(() => _checking = false);
       return;
     }
@@ -557,7 +553,7 @@ class _PayBtnState extends State<_PayBtn> {
           width: double.infinity,
           height: 44,
           child: OutlinedButton(
-            // null disables the button while keeping the outlined style
+            // null disables the button while keeping outlined style
             onPressed: _allowed ? widget.onTap : null,
             style: OutlinedButton.styleFrom(
               side: BorderSide(color: _allowed ? const Color(0xFFCC0000) : Colors.grey.shade300),
@@ -566,11 +562,12 @@ class _PayBtnState extends State<_PayBtn> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             child: Text(
-              'Mark payment received - \$${widget.student.monthlyRate!.toStringAsFixed(2)}',
+              'Mark payment received - \$${widget.student.monthRate!.toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ),
         ),
+        // show days remaining when button is disabled
         if (!_allowed) ...[
           const SizedBox(height: 6),
           Text(

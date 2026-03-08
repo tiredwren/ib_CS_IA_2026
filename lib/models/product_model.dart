@@ -3,26 +3,26 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ProductModel {
   final String id;
   final String name;
-  final String description;
+  final String desc;
   final double price;
   final String category; // uniforms, sparring gear, gear bags, and weapons
   final List<String> sizes;
   final String? imageUrl;
   final bool inStock;
-  final List<String> rankRequired;
-  final DateTime createdAt;
+  final List<String> rankReq;
+  final DateTime created;
 
   ProductModel({
     required this.id,
     required this.name,
-    required this.description,
+    required this.desc,
     required this.price,
     required this.category,
-    required this.rankRequired,
+    required this.rankReq,
     this.sizes = const [],
     this.imageUrl,
     this.inStock = true,
-    required this.createdAt,
+    required this.created,
   });
 
   factory ProductModel.fromFirestore(DocumentSnapshot doc) {
@@ -30,35 +30,35 @@ class ProductModel {
     return ProductModel(
       id: doc.id,
       name: data['name'] ?? '',
-      description: data['description'] ?? '',
+      desc: data['description'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
       category: data['category'] ?? '',
       sizes: List<String>.from(data['sizes'] ?? []),
       imageUrl: data['imageUrl'],
       inStock: data['inStock'] ?? true,
-      rankRequired: data['rankRequired'] != null
+      rankReq: data['rankRequired'] != null
           ? List<String>.from(data["rankRequired"])
           : [],
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      created: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'name': name,
-      'description': description,
+      'description': desc,
       'price': price,
       'category': category,
       'sizes': sizes,
       'imageUrl': imageUrl,
       'inStock': inStock,
-      'rankRequired': rankRequired,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'rankRequired': rankReq,
+      'createdAt': Timestamp.fromDate(created),
     };
   }
 
-  bool isAvailableForRank(String userRank) {
-    if (rankRequired.isEmpty) return true;
+  bool rankAvail(String userRank) {
+    if (rankReq.isEmpty) return true;
 
     const rankOrder = [
       'White Belt',
@@ -70,11 +70,11 @@ class ProductModel {
       'Black Belt',
     ];
 
-    final userRankIndex = rankOrder.indexOf(userRank);
-    final requiredRankIndex = rankOrder.indexOf(rankRequired[0]);
+    final rankIdx = rankOrder.indexOf(userRank);
+    final requiredRankIndex = rankOrder.indexOf(rankReq[0]);
 
-    if (userRankIndex == -1 || requiredRankIndex == -1) return false; // filter visibility based on user rank
+    if (rankIdx == -1 || requiredRankIndex == -1) return false; // filter visibility based on user rank
 
-    return rankRequired.contains(userRank);
+    return rankReq.contains(userRank);
   }
 }

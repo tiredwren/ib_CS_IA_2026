@@ -1,6 +1,8 @@
+// text input, filled or outlined (bc options are cool)
+
 import 'package:flutter/material.dart';
 
-enum Style { filled, outlined }
+enum Style { filled, outlined } // can change between styles if designer wants
 
 class TextField extends StatelessWidget {
   final TextEditingController controller;

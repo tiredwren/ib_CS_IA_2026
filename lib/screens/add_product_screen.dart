@@ -10,16 +10,16 @@ class AddProductScreen extends StatefulWidget {
 
 class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _imageUrlController = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  final _priceCtrl = TextEditingController();
+  final _imgUrlCtrl = TextEditingController();
 
-  String _selectedCategory = 'Uniforms';
+  String _category = 'Uniforms';
   bool _inStock = true;
-  bool _isLoading = false;
-  List<String> _selectedSizes = [];
-  List<String> _selectedRanks = [];
+  bool _loading = false;
+  List<String> _sizes = [];
+  List<String> _ranks = [];
 
   final List<String> _categories = [
     'Uniforms', 'Weapons', 'Sparring Gear', 'Gear Bags',
@@ -34,30 +34,29 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _descriptionController.dispose();
-    _priceController.dispose();
-    _imageUrlController.dispose();
+    _nameCtrl.dispose();
+    _descCtrl.dispose();
+    _priceCtrl.dispose();
+    _imgUrlCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _addProduct() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _loading = true);
 
     try {
       await FirebaseFirestore.instance.collection('products').add({
-        'name': _nameController.text.trim(),
-        'description': _descriptionController.text.trim(),
-        'price': double.parse(_priceController.text),
-        'category': _selectedCategory,
-        'sizes': _selectedSizes,
-        'imageUrl': _imageUrlController.text.trim().isEmpty
-            ? null
-            : _imageUrlController.text.trim(),
+        'name': _nameCtrl.text.trim(),
+        'description': _descCtrl.text.trim(),
+        'price': double.parse(_priceCtrl.text),
+        'category': _category,
+        'sizes': _sizes,
+        // store null if empty rather than empty string
+        'imageUrl': _imgUrlCtrl.text.trim().isEmpty ? null : _imgUrlCtrl.text.trim(),
         'inStock': _inStock,
-        'rankRequired': _selectedRanks,
+        'rankRequired': _ranks,
         'createdAt': Timestamp.now(),
       });
 
@@ -68,7 +67,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         );
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error adding product: $e')),
@@ -102,30 +101,29 @@ class _AddProductScreenState extends State<AddProductScreen> {
           children: [
             const SizedBox(height: 20),
 
-            // name field
             _plainField(
-              controller: _nameController,
+              controller: _nameCtrl,
               hint: 'Product name',
               validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
             ),
             const SizedBox(height: 12),
 
-            // category and price on the same row
+            // category + price on same row
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: _plainDropdown<String>(
-                    value: _selectedCategory,
+                  child: _plainDrop<String>(
+                    value: _category,
                     items: _categories,
-                    onChanged: (v) => setState(() => _selectedCategory = v!),
+                    onChanged: (v) => setState(() => _category = v!),
                   ),
                 ),
                 const SizedBox(width: 12),
                 SizedBox(
                   width: 110,
                   child: _plainField(
-                    controller: _priceController,
+                    controller: _priceCtrl,
                     hint: '0.00',
                     keyboardType: TextInputType.number,
                     prefix: const Text('\$  ', style: TextStyle(color: Colors.black54, fontSize: 14)),
@@ -140,41 +138,34 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ),
             const SizedBox(height: 20),
 
-            // description
             _plainField(
-              controller: _descriptionController,
+              controller: _descCtrl,
               hint: 'Description',
               maxLines: 3,
               validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
             ),
             const SizedBox(height: 12),
 
-            // image url
             _plainField(
-              controller: _imageUrlController,
+              controller: _imgUrlCtrl,
               hint: 'Image URL (optional)',
             ),
             const SizedBox(height: 24),
 
-            // sizes
-            Text(
-              'Sizes',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-            ),
+            Text('Sizes', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: _availableSizes.map((size) {
-                final selected = _selectedSizes.contains(size);
+                final sel = _sizes.contains(size);
                 return GestureDetector(
-                  onTap: () => setState(() =>
-                  selected ? _selectedSizes.remove(size) : _selectedSizes.add(size)),
+                  onTap: () => setState(() => sel ? _sizes.remove(size) : _sizes.add(size)),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 130),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: selected ? const Color(0xFFCC0000) : const Color(0xFFF2F2F2),
+                      color: sel ? const Color(0xFFCC0000) : const Color(0xFFF2F2F2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -182,7 +173,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: selected ? Colors.white : Colors.grey[600],
+                        color: sel ? Colors.white : Colors.grey[600],
                       ),
                     ),
                   ),
@@ -191,30 +182,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ),
             const SizedBox(height: 24),
 
-            // required ranks
-            Text(
-              'Required ranks',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-            ),
+            Text('Required ranks', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
             const SizedBox(height: 4),
-            Text(
-              'Leave empty for all ranks',
-              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-            ),
+            Text('Leave empty for all ranks', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: _allRanks.map((rank) {
-                final selected = _selectedRanks.contains(rank);
+                final sel = _ranks.contains(rank);
                 return GestureDetector(
-                  onTap: () => setState(() =>
-                  selected ? _selectedRanks.remove(rank) : _selectedRanks.add(rank)),
+                  onTap: () => setState(() => sel ? _ranks.remove(rank) : _ranks.add(rank)),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 130),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: selected ? const Color(0xFFCC0000) : const Color(0xFFF2F2F2),
+                      color: sel ? const Color(0xFFCC0000) : const Color(0xFFF2F2F2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -222,7 +205,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: selected ? Colors.white : Colors.grey[600],
+                        color: sel ? Colors.white : Colors.grey[600],
                       ),
                     ),
                   ),
@@ -233,10 +216,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
             Row(
               children: [
-                Text(
-                  'In stock',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                ),
+                Text('In stock', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
                 const Spacer(),
                 Switch(
                   value: _inStock,
@@ -252,13 +232,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
               width: double.infinity,
               height: 50,
               child: FilledButton(
-                onPressed: _isLoading ? null : _addProduct,
+                onPressed: _loading ? null : _addProduct,
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFFCC0000),
                   disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.4),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                child: _isLoading
+                child: _loading
                     ? const SizedBox(
                   width: 20,
                   height: 20,
@@ -322,7 +302,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
-  Widget _plainDropdown<T>({
+  Widget _plainDrop<T>({
     required T value,
     required List<T> items,
     required void Function(T?) onChanged,

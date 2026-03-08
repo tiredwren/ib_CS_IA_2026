@@ -6,14 +6,14 @@ class EventModel {
   final String type;
   final DateTime startTime;
   final DateTime endTime;
-  final String instructor;
+  final String inst;
   final double price;
-  final int maxCapacity;
-  final int currentEnrollment;
-  final List<String> requiredRanks;
-  final String? requirements;
+  final int maxCap;
+  final int currEnrollment;
+  final List<String> rankReq;
+  final String? reqs;
   final String room;
-  final List<String> daysOfWeek;
+  final List<String> days;
   // separated for name
   final int startHour;
   final int startMinute;
@@ -26,14 +26,14 @@ class EventModel {
     required this.type,
     required this.startTime,
     required this.endTime,
-    required this.instructor,
+    required this.inst,
     required this.price,
-    required this.maxCapacity,
-    this.currentEnrollment = 0,
-    this.requiredRanks = const [],
-    this.requirements,
+    required this.maxCap,
+    this.currEnrollment = 0,
+    this.rankReq = const [],
+    this.reqs,
     this.room = 'Room A',
-    this.daysOfWeek = const [],
+    this.days = const [],
     this.startHour = 0,
     this.endHour = 0,
     this.startMinute = 0,
@@ -48,14 +48,14 @@ class EventModel {
       type: data['type'] ?? '',
       startTime: data['startTime'] != null ? (data['startTime'] as Timestamp).toDate() : DateTime.now(),
       endTime: data['endTime'] != null ? (data['endTime'] as Timestamp).toDate() : DateTime.now(),
-      instructor: data['instructor'] ?? '',
+      inst: data['instructor'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
-      maxCapacity: data['maxCapacity'] ?? 0,
-      currentEnrollment: data['currentEnrollment'] ?? 0,
-      requiredRanks: List<String>.from(data['requiredRanks'] ?? []),
-      requirements: data['requirements'],
+      maxCap: data['maxCapacity'] ?? 0,
+      currEnrollment: data['currentEnrollment'] ?? 0,
+      rankReq: List<String>.from(data['requiredRanks'] ?? []),
+      reqs: data['requirements'],
       room: data['room'] ?? 'Room A',
-      daysOfWeek: List<String>.from(data['daysOfWeek'] ?? []),
+      days: List<String>.from(data['daysOfWeek'] ?? []),
       startHour: data["startHour"] ?? 9,
       startMinute: data["startMinute"] ?? 0,
       endHour: data["endHour"] ?? 10,
@@ -69,25 +69,25 @@ class EventModel {
       'type': type,
       'startTime': Timestamp.fromDate(startTime),
       'endTime': Timestamp.fromDate(endTime),
-      'instructor': instructor,
+      'instructor': inst,
       'price': price,
-      'maxCapacity': maxCapacity,
-      'currentEnrollment': currentEnrollment,
-      'requiredRanks': requiredRanks,
-      'requirements': requirements,
+      'maxCapacity': maxCap,
+      'currentEnrollment': currEnrollment,
+      'requiredRanks': rankReq,
+      'requirements': reqs,
       'room': room,
-      'daysOfWeek': daysOfWeek,
+      'daysOfWeek': days,
     };
   }
 
-  bool isUserEligible(String userRank) {
-    if (requiredRanks.isEmpty) return true;
-    return requiredRanks.contains(userRank);
+  bool eligible(String userRank) {
+    if (rankReq.isEmpty) return true;
+    return rankReq.contains(userRank);
   }
 
-  bool get isFull => currentEnrollment >= maxCapacity;
+  bool get isFull => currEnrollment >= maxCap;
 
-  String getDisplayName() {
+  String getDispName() {
     final dayAbbreviations = {
       'Monday': 'M',
       'Tuesday': 'T',
@@ -98,16 +98,16 @@ class EventModel {
       'Sunday': 'Su',
     };
 
-    final days = daysOfWeek.map((day) => dayAbbreviations[day] ?? day).join('/');
-    final startTimeStr = _formatTime(DateTime(0, 0, 0, startHour, startMinute));
-    final endTimeStr = _formatTime(DateTime(0, 0, 0, endHour, endMinute));
+    final days = this.days.map((day) => dayAbbreviations[day] ?? day).join('/');
+    final startTimeStr = _timeFormatting(DateTime(0, 0, 0, startHour, startMinute));
+    final endTimeStr = _timeFormatting(DateTime(0, 0, 0, endHour, endMinute));
     final timeRange = '$startTimeStr-$endTimeStr';
 
     // name together for card formatting
     return name.isEmpty ? '$days $timeRange' : '$days $timeRange $name';
   }
 
-  String _formatTime(DateTime time) {
+  String _timeFormatting(DateTime time) {
     final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.hour >= 12 ? 'PM' : 'AM';

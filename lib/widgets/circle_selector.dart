@@ -1,3 +1,5 @@
+// multi select for class days of week / product sizes
+
 import 'package:flutter/material.dart';
 
 class CircleSelector extends StatelessWidget {

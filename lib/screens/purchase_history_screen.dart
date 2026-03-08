@@ -6,6 +6,7 @@ import '../models/purchase_model.dart';
 
 class PurchaseHistoryScreen extends StatefulWidget {
   // if userId is passed, shows only that user's purchases (student view)
+  // if null, shows all purchases (admin view)
   final String? userId;
   const PurchaseHistoryScreen({super.key, this.userId});
 
@@ -14,7 +15,8 @@ class PurchaseHistoryScreen extends StatefulWidget {
 }
 
 class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
-  bool _isLoading = true;
+  bool _loading = true;
+  // grouped by month/year key e.g. "3/2025"
   Map<String, List<PurchaseModel>> _byMonth = {};
   Map<String, String> _userNames = {};
 
@@ -25,27 +27,21 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() => _loading = true);
     try {
-      Query query = FirebaseFirestore.instance.collection('purchases');
+      Query q = FirebaseFirestore.instance.collection('purchases');
+      if (widget.userId != null) q = q.where('userId', isEqualTo: widget.userId);
+      q = q.orderBy('purchaseDate', descending: true);
 
-      if (widget.userId != null) {
-        query = query.where('userId', isEqualTo: widget.userId);
-      }
-
-      query = query.orderBy('purchaseDate', descending: true);
-
-      final snap = await query.get();
+      final snap = await q.get();
       final purchases = snap.docs.map((d) => PurchaseModel.fromFirestore(d)).toList();
 
-      // batch fetch users only when in admin view
+      // batch-fetch user names only in admin view
       if (widget.userId == null) {
         final uids = purchases.map((p) => p.userId).toSet();
         for (final uid in uids) {
           final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-          if (doc.exists) {
-            _userNames[uid] = UserModel.fromFirestore(doc).fullName;
-          }
+          if (doc.exists) _userNames[uid] = UserModel.fromFirestore(doc).fullName;
         }
       }
 
@@ -56,11 +52,11 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
 
       setState(() {
         _byMonth = grouped;
-        _isLoading = false;
+        _loading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      debugPrint('Error: $e');
+      setState(() => _loading = false);
+      debugPrint('error: $e');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
@@ -73,7 +69,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
     await _load();
   }
 
-  void _showStatusOptions(PurchaseModel purchase) {
+  void _showStatusPicker(PurchaseModel purchase) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -94,7 +90,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            Text(purchase.productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(purchase.prodName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            // show student name in admin view
             Text(
               widget.userId == null ? (_userNames[purchase.userId] ?? '') : '',
               style: TextStyle(fontSize: 13, color: Colors.grey[500]),
@@ -132,10 +129,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
               status[0].toUpperCase() + status.substring(1),
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: current ? color : Colors.black87),
             ),
-            if (current) ...[
-              const Spacer(),
-              Icon(Icons.check, size: 16, color: color),
-            ],
+            if (current) ...[const Spacer(), Icon(Icons.check, size: 16, color: color)],
           ],
         ),
       ),
@@ -159,7 +153,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
         ),
         bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1)),
       ),
-      body: _isLoading
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _byMonth.isEmpty
           ? Center(child: Text('No purchases yet', style: TextStyle(fontSize: 15, color: Colors.grey[400])))
@@ -175,12 +169,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
   }
 
   Widget _buildMonth(String monthYear, List<PurchaseModel> purchases, bool isAdmin) {
-    // sum per month so header can show total without separate query
-    double total = 0;
-    for (final p in purchases) {
-      total += p.price;
-    }
-
+    // sum totals per month for header
+    final total = purchases.fold(0.0, (sum, p) => sum + p.price);
     final parts = monthYear.split('/');
     final label = DateFormat('MMMM y').format(DateTime(int.parse(parts[1]), int.parse(parts[0])));
 
@@ -205,10 +195,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
           ),
           child: Column(
             children: purchases.asMap().entries.map((entry) {
-              final idx = entry.key;
-              final p = entry.value;
-              final last = idx == purchases.length - 1;
-              return _buildRow(p, isAdmin, idx, last);
+              return _buildRow(entry.value, isAdmin, entry.key, entry.key == purchases.length - 1);
             }).toList(),
           ),
         ),
@@ -217,18 +204,15 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
     );
   }
 
-  Widget _buildRow(PurchaseModel purchase, bool isAdmin, int idx, bool last) {
-    Color statusColor;
-    if (purchase.status == 'completed') {
-      statusColor = Colors.green;
-    } else if (purchase.status == 'cancelled') {
-      statusColor = Colors.grey;
-    } else {
-      statusColor = Colors.orange;
-    }
+  Widget _buildRow(PurchaseModel p, bool isAdmin, int idx, bool last) {
+    final statusColor = p.status == 'completed'
+        ? Colors.green
+        : p.status == 'cancelled'
+        ? Colors.grey
+        : Colors.orange;
 
     return InkWell(
-      onTap: isAdmin ? () => _showStatusOptions(purchase) : null,
+      onTap: isAdmin ? () => _showStatusPicker(p) : null,
       borderRadius: BorderRadius.vertical(
         top: idx == 0 ? const Radius.circular(10) : Radius.zero,
         bottom: last ? const Radius.circular(10) : Radius.zero,
@@ -244,18 +228,15 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(purchase.productName,
+                      Text(p.prodName,
                           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
                       const SizedBox(height: 2),
-                      if (isAdmin && _userNames[purchase.userId] != null)
-                        Text(_userNames[purchase.userId]!,
-                            style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-                      Text(
-                        DateFormat('MMM d, y · h:mm a').format(purchase.purchaseDate),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                      ),
-                      if (purchase.size != null)
-                        Text('Size: ${purchase.size}', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+                      if (isAdmin && _userNames[p.userId] != null)
+                        Text(_userNames[p.userId]!, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                      Text(DateFormat('MMM d, y · h:mm a').format(p.date),
+                          style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+                      if (p.size != null)
+                        Text('Size: ${p.size}', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
                     ],
                   ),
                 ),
@@ -263,7 +244,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('\$${purchase.price.toStringAsFixed(2)}',
+                    Text('\$${p.price.toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87)),
                     const SizedBox(height: 4),
                     Container(
@@ -273,11 +254,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: statusColor.withOpacity(0.3)),
                       ),
-                      child: Text(
-                        purchase.status,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor),
-                      ),
+                      child: Text(p.status,
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
                     ),
+                    // admin gets a tap affordance indicator
                     if (isAdmin)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),

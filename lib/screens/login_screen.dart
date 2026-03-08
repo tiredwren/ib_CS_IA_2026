@@ -12,31 +12,31 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isLoading = false;
-  bool _obscurePassword = true;
+  final _key = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  bool _loading = false;
+  bool _hidden = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _email.dispose();
+    _pass.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_key.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _loading = true);
 
     final authService = Provider.of<AuthService>(context, listen: false);
     final error = await authService.signIn(
-      _emailController.text.trim(),
-      _passwordController.text,
+      _email.text.trim(),
+      _pass.text,
     );
 
-    setState(() => _isLoading = false);
+    setState(() => _loading = false);
 
     if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -49,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _forgotPassword() async {
-    if (_emailController.text.trim().isEmpty) {
+    if (_email.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter your email address'),
@@ -60,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final authService = Provider.of<AuthService>(context, listen: false);
-    final error = await authService.resetPassword(_emailController.text.trim());
+    final error = await authService.resetPassword(_email.text.trim());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -83,7 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Form(
-              key: _formKey,
+              key: _key,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 100,
                         alignment: Alignment.center,
                         child: const Icon(
-                          Icons.sports_martial_arts,
+                          Icons.sports_martial_arts, // fallback icon if image broken
                           size: 80,
                           color: Color(0xFFCC0000),
                         ),
@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 40),
 
-                  // Title
+                  // title
                   const Text(
                     'Login to your account',
                     style: TextStyle(
@@ -117,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Email field
+                  // email field
                   const Text(
                     'Email',
                     style: TextStyle(
@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _emailController,
+                    controller: _email,
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       hintText: 'Enter your email',
@@ -145,7 +145,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Password field
+                  // password field
                   const Text(
                     'Password',
                     style: TextStyle(
@@ -155,19 +155,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
+                    controller: _pass,
+                    obscureText: _hidden,
                     decoration: InputDecoration(
                       hintText: 'Enter your password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword
+                          _hidden
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                         ),
                         onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
+                          setState(() => _hidden = !_hidden);
                         },
                       ),
                     ),
@@ -178,20 +178,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
 
-                  // Forgot password
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: _forgotPassword,
-                      child: const Text(
-                        'Forgot password?',
-                        style: TextStyle(
-                          color: Color(0xFFCC0000),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      child: const Text('Forgot password?',
+                          style: TextStyle(color: Color(0xFFCC0000), fontWeight: FontWeight.w500)),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -200,12 +193,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     height: 60,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _login,
+                      onPressed: _loading ? null : _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFCC0000),
                         foregroundColor: Colors.white,
                       ),
-                      child: _isLoading
+                      child: _loading
                           ? const SizedBox(
                         height: 20,
                         width: 20,
@@ -225,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 5),
 
                   // sign up link
                   Row(
@@ -247,47 +240,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-
-                  // divider
-                  const Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('or'),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // facebook login button
-                  SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Facebook login coming soon!'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.facebook, color: Color(0xFF1877F2)),
-                      label: const Text(
-                        'Login with Facebook',
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

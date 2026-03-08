@@ -1,4 +1,5 @@
-// tappable time display tile
+// tappable time display tile (dart-provided interface is ugly)
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 

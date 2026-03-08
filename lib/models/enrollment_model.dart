@@ -5,20 +5,20 @@ class EnrollmentModel {
   final String userId;
   final String eventId;
   final String status; // enrolled, waitlisted, or cancelled
-  final DateTime enrolledAt;
-  final bool isPaid;
+  final DateTime enrolled;
+  final bool paid;
   final DateTime? removedAt;
-  final bool isActive;
+  final bool active;
 
   EnrollmentModel({
     required this.id,
     required this.userId,
     required this.eventId,
     required this.status,
-    required this.enrolledAt,
-    this.isPaid = false,
+    required this.enrolled,
+    this.paid = false,
     this.removedAt,
-    this.isActive = true,
+    this.active = true,
   });
 
   factory EnrollmentModel.fromFirestore(DocumentSnapshot doc) {
@@ -28,12 +28,12 @@ class EnrollmentModel {
       userId: data['userId'] ?? '',
       eventId: data['eventId'] ?? '',
       status: data['status'] ?? 'enrolled',
-      enrolledAt: (data['enrolledAt'] as Timestamp).toDate(),
-      isPaid: data['isPaid'] ?? false,
+      enrolled: (data['enrolledAt'] as Timestamp).toDate(),
+      paid: data['isPaid'] ?? false,
       removedAt: data['removedAt'] != null // only filed if class deleted by admin
           ? (data['removedAt'] as Timestamp).toDate()
           : null,
-      isActive: data['isActive'] ?? true, // false if removed by admin, else true
+      active: data['isActive'] ?? true, // false if removed by admin, else true
     );
   }
 
@@ -42,10 +42,10 @@ class EnrollmentModel {
       'userId': userId,
       'eventId': eventId,
       'status': status,
-      'enrolledAt': Timestamp.fromDate(enrolledAt),
-      'isPaid': isPaid,
+      'enrolledAt': Timestamp.fromDate(enrolled),
+      'isPaid': paid,
       'removedAt': removedAt != null ? Timestamp.fromDate(removedAt!) : null,
-      'isActive': isActive,
+      'isActive': active,
     };
   }
 }

@@ -13,11 +13,11 @@ class RequirementSheets extends StatefulWidget {
 }
 
 class _RequirementSheetsState extends State<RequirementSheets> {
-  String? _viewingRank;
-  Set<String> _checkedIds = {};
-  bool _isLoading = true;
+  String? _rank;
+  Set<String> _reqsChecked = {};
+  bool _loading = true;
   String? _uid;
-  String _currentRank = 'White Belt';
+  String _currRank = 'White Belt';
 
   @override
   void initState() {
@@ -30,14 +30,14 @@ class _RequirementSheetsState extends State<RequirementSheets> {
     final user = auth.currentUserModel;
 
     _uid = user?.uid;
-    _currentRank = user?.rank ?? 'White Belt';
-    setState(() => _viewingRank = _currentRank);
-    await _loadChecked(_currentRank);
+    _currRank = user?.rank ?? 'White Belt';
+    setState(() => _rank = _currRank);
+    await _loadChecked(_currRank);
   }
 
   Future<void> _loadChecked(String rank) async {
-    setState(() => _isLoading = true);
-    if (_uid == null) { setState(() => _isLoading = false); return; }
+    setState(() => _loading = true);
+    if (_uid == null) { setState(() => _loading = false); return; }
     try {
       final doc = await FirebaseFirestore.instance
           .collection('userProgress')
@@ -47,27 +47,27 @@ class _RequirementSheetsState extends State<RequirementSheets> {
           .get();
       final data = doc.data();
       setState(() {
-        _checkedIds = data != null
+        _reqsChecked = data != null
             ? Set<String>.from((data['checked'] as List<dynamic>? ?? []))
             : {};
-        _isLoading = false;
+        _loading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      setState(() => _loading = false);
     }
   }
 
   Future<void> _toggleItem(String id, bool checked) async {
     setState(() {
-      checked ? _checkedIds.add(id) : _checkedIds.remove(id);
+      checked ? _reqsChecked.add(id) : _reqsChecked.remove(id);
     });
     if (_uid == null) return;
     await FirebaseFirestore.instance
         .collection('userProgress')
         .doc(_uid)
         .collection('checkedRequirements')
-        .doc(_rankDocId(_viewingRank!))
-        .set({'checked': _checkedIds.toList()});
+        .doc(_rankDocId(_rank!))
+        .set({'checked': _reqsChecked.toList()});
   }
 
   String _rankDocId(String rank) => rank.toLowerCase().replaceAll(' ', '_');
@@ -78,7 +78,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
     return rankOrder.sublist(0, idx).reversed.toList();
   }
 
-  RankRequirements? _requirementsFor(String rank) {
+  RankReqs? _reqsFor(String rank) {
     try { return allRankRequirements.firstWhere((r) => r.rank == rank); }
     catch (_) { return null; }
   }
@@ -88,17 +88,17 @@ class _RequirementSheetsState extends State<RequirementSheets> {
     final auth = Provider.of<AuthService>(context);
     final user = auth.currentUserModel;
 
-    // _viewingRank is set async in _init, guard until it's ready
-    if (_viewingRank == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    // don't set rank until loaded (async)
+    if (_rank == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    final previousRanks = _previousRanks(_currentRank);
-    final reqs = _requirementsFor(_viewingRank!);
+    final previousRanks = _previousRanks(_currRank);
+    final reqs = _reqsFor(_rank!);
 
     int total = 0, done = 0;
     if (reqs != null) {
       for (final cat in reqs.categories) {
         total += cat.items.length;
-        done += cat.items.where((i) => _checkedIds.contains(i.id)).length;
+        done += cat.items.where((i) => _reqsChecked.contains(i.id)).length;
       }
     }
 
@@ -106,7 +106,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: _isLoading
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
         slivers: [
@@ -146,7 +146,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _currentRank,
+                                    _currRank,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -200,17 +200,17 @@ class _RequirementSheetsState extends State<RequirementSheets> {
                   if (previousRanks.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: _viewingRank,
+                      value: _rank,
                       decoration: const InputDecoration(
                         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       ),
                       items: [
-                        DropdownMenuItem(value: _currentRank, child: Text('$_currentRank (current)')),
+                        DropdownMenuItem(value: _currRank, child: Text('$_currRank (current)')),
                         ...previousRanks.map((r) => DropdownMenuItem(value: r, child: Text(r))),
                       ],
                       onChanged: (rank) async {
                         if (rank == null) return;
-                        setState(() => _viewingRank = rank);
+                        setState(() => _rank = rank);
                         await _loadChecked(rank);
                       },
                     ),
@@ -224,7 +224,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
             SliverFillRemaining(
               child: Center(
                 child: Text(
-                  'Requirements for $_viewingRank\ncoming soon',
+                  'Requirements for $_rank\ncoming soon',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey[400], fontSize: 15),
                 ),
@@ -237,7 +237,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
                 delegate: SliverChildBuilderDelegate(
                       (context, i) => Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: _buildCategory(reqs.categories[i]),
+                    child: _category(reqs.categories[i]),
                   ),
                   childCount: reqs.categories.length,
                 ),
@@ -248,10 +248,11 @@ class _RequirementSheetsState extends State<RequirementSheets> {
     );
   }
 
-  Widget _buildCategory(RequirementCategory cat) {
+  // sectioning eg. kicks, form basics, forms
+  Widget _category(ReqCategory cat) {
     final items = cat.items;
-    final allDone = items.every((i) => _checkedIds.contains(i.id));
-    final doneCnt = items.where((i) => _checkedIds.contains(i.id)).length;
+    final allDone = items.every((i) => _reqsChecked.contains(i.id));
+    final doneCnt = items.where((i) => _reqsChecked.contains(i.id)).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,7 +292,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
               final idx = entry.key;
               final item = entry.value;
               final last = idx == items.length - 1;
-              return _buildItem(item, idx, last);
+              return _reqItem(item, idx, last);
             }).toList(),
           ),
         ),
@@ -299,8 +300,8 @@ class _RequirementSheetsState extends State<RequirementSheets> {
     );
   }
 
-  Widget _buildItem(RequirementItem item, int idx, bool last) {
-    final checked = _checkedIds.contains(item.id);
+  Widget _reqItem(ReqItem item, int idx, bool last) {
+    final checked = _reqsChecked.contains(item.id);
 
     return Column(
       children: [

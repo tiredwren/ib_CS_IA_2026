@@ -1,4 +1,4 @@
-// helper for signin/signup/create new user docs
+// helper for signin/signup/user doc creation
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,170 +7,152 @@ import '../models/user_model.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  static const String ADMIN_CODE = "424321438"; // secret code to create admin account
+  // secret code required to register an admin account
+  static const String _adminCode = "424321438";
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  UserModel? _currentUserModel;
-  UserModel? get currentUserModel => _currentUserModel;
+  UserModel? _userModel;
+  UserModel? get currentUserModel => _userModel;
 
-  // constructor to load user data on app start
+  // listen to auth state on init, load user data when signed in
   AuthService() {
-    // listen to auth state changes and load user data when user logs in
     _auth.authStateChanges().listen((User? user) {
       if (user != null) {
-        _loadUserData(user.uid);
+        _loadUser(user.uid);
       } else {
-        _currentUserModel = null;
+        _userModel = null;
         notifyListeners();
       }
     });
   }
 
-  // sign in with email and password
+  // sign in with email + password
   Future<String?> signIn(String email, String password) async {
     try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(
+      final res = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      await _loadUserData(result.user!.uid);
+      await _loadUser(res.user!.uid);
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
-        return 'No user found with this email.';
-      } else if (e.code == 'wrong-password') {
-        return 'Incorrect password.';
-      } else if (e.code == 'invalid-email') {
-        return 'Invalid email address.';
-      } else if (e.code == 'user-disabled') {
-        return 'This account has been disabled.';
-      }
+      if (e.code == 'user-not-found') return 'No user found with this email.';
+      if (e.code == 'wrong-password') return 'Incorrect password.';
+      if (e.code == 'invalid-email') return 'Invalid email address.';
+      if (e.code == 'user-disabled') return 'This account has been disabled.';
       return 'An error occurred. Please try again.';
     } catch (e) {
       return 'An unexpected error occurred.';
     }
   }
 
-  // sign UP with email and password
+  // sign up -- admin path requires valid admin code
   Future<String?> signUp({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
-    String? program, // only for students
-    String? position, // only for admins
-    String? adminCode // can be left blank for student accs
+    String? program,   // students only
+    String? position,  // admins only
+    String? adminCode,
   }) async {
     try {
-      bool isAdminSignup = adminCode != null && adminCode.isNotEmpty;
+      final isAdmin = adminCode != null && adminCode.isNotEmpty;
 
-      if (isAdminSignup && adminCode != ADMIN_CODE) { // entered admin code wrong
+      if (isAdmin && adminCode != _adminCode) {
         return "invalid admin code; please contact an administrator if there has been an issue.";
       }
 
-      UserCredential result = await _auth.createUserWithEmailAndPassword(
+      final res = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // create user document in Firestore
       UserModel newUser;
 
-      if (isAdminSignup) {
-        // create new admin user
+      if (isAdmin) {
+        // admin account -- store position in program field
         newUser = UserModel(
-          uid: result.user!.uid,
+          uid: res.user!.uid,
           email: email,
-          firstName: firstName,
-          lastName: lastName,
-          program: position ?? '', // use program field to store admin position
-          rank: "n/a", // admins don't have rank
+          firstN: firstName,
+          lastN: lastName,
+          program: position ?? '',
+          rank: "n/a",
           role: "admin",
-          createdAt: DateTime.now(),
+          created: DateTime.now(),
         );
       } else {
-        // create new student user
-        if (program == null) {
-          return "program selection is required for students.";
-        }
+        if (program == null) return "program selection is required for students.";
+        // student account -- starts at white belt
         newUser = UserModel(
-          uid: result.user!.uid,
+          uid: res.user!.uid,
           email: email,
-          firstName: firstName,
-          lastName: lastName,
+          firstN: firstName,
+          lastN: lastName,
           program: program,
           rank: 'White Belt',
           role: 'student',
-          createdAt: DateTime.now(),
+          created: DateTime.now(),
         );
       }
 
-      await _firestore.collection('users').doc(result.user!.uid).set(newUser.toMap());
+      await _db.collection('users').doc(res.user!.uid).set(newUser.toMap());
 
-      _currentUserModel = newUser;
+      _userModel = newUser;
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'weak-password') {
-        return 'Password is too weak. Please use a stronger password.';
-      } else if (e.code == 'email-already-in-use') {
-        return 'An account already exists with this email.';
-      } else if (e.code == 'invalid-email') {
-        return 'Invalid email address.';
-      }
+      if (e.code == 'weak-password') return 'Password is too weak. Please use a stronger password.';
+      if (e.code == 'email-already-in-use') return 'An account already exists with this email.';
+      if (e.code == 'invalid-email') return 'Invalid email address.';
       return 'An error occurred during sign up.';
     } catch (e) {
       return 'An unexpected error occurred.';
     }
   }
 
-  // load user data from Firestore
-  Future<void> _loadUserData(String uid) async {
+  // fetch user doc from firestore and cache locally
+  Future<void> _loadUser(String uid) async {
     try {
-      DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
+      final doc = await _db.collection('users').doc(uid).get();
       if (doc.exists) {
-        _currentUserModel = UserModel.fromFirestore(doc);
+        _userModel = UserModel.fromFirestore(doc);
         notifyListeners();
       }
     } catch (e) {
-      print('Error loading user data: $e');
+      print('error loading user: $e');
     }
   }
 
-  // sign out
   Future<void> signOut() async {
     await _auth.signOut();
-    _currentUserModel = null;
+    _userModel = null;
     notifyListeners();
   }
 
-  // reset password
   Future<String?> resetPassword(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
       return null;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
-        return 'No user found with this email.';
-      } else if (e.code == 'invalid-email') {
-        return 'Invalid email address.';
-      }
+      if (e.code == 'user-not-found') return 'No user found with this email.';
+      if (e.code == 'invalid-email') return 'Invalid email address.';
       return 'An error occurred. Please try again.';
     }
   }
 
-  // check if user holds admin status
-  bool get isAdmin => _currentUserModel?.role == 'admin';
+  bool get isAdmin => _userModel?.role == 'admin';
 
-  // refresh user data
+  // force re-fetch of user doc, e.g. after rank update
   Future<void> refreshUserData() async {
     if (currentUser != null) {
-      await _loadUserData(currentUser!.uid);
+      await _loadUser(currentUser!.uid);
       notifyListeners();
     }
   }

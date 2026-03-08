@@ -19,7 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final auth = Provider.of<AuthService>(context, listen: false);
-    // only load payments for students bc admins don't have payment info
+    // admins don't have payment info, skip fetch
     if (!auth.isAdmin) _loadPayments();
   }
 
@@ -65,35 +65,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
         children: [
-          // name + email for everyone
+          // name + email shown for all users
           Text(user?.fullName ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(user?.email ?? '', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
           const SizedBox(height: 24),
 
           if (isAdmin) ...[
-            // admins just see a simple info row with their role
+            // admins just see role, no payment section
             _sectionHeader('Role'),
             const SizedBox(height: 8),
             _infoCard([_infoRow('Role', 'Admin')]),
           ] else ...[
-            // student profile section
             _sectionHeader('Profile'),
             const SizedBox(height: 8),
             _infoCard([
               _infoRow('Rank', user?.rank ?? '-'),
               _infoRow('Program', user?.program.isNotEmpty == true ? user!.program : '-'),
-              _infoRow('Payment method', _formatPaymentMethod(user?.paymentMethod)),
+              _infoRow('Payment method', _fmtMethod(user?.payMeth)),
             ]),
             const SizedBox(height: 28),
 
-            // upcoming payment
             _sectionHeader('Upcoming payment'),
             const SizedBox(height: 8),
-            _upcomingPaymentCard(user?.nextPaymentDate, user?.monthlyRate),
+            _upcomingCard(user?.nextPay, user?.monthRate),
             const SizedBox(height: 28),
 
-            // payment history
             _sectionHeader('Payment history'),
             const SizedBox(height: 8),
             if (_loadingPayments)
@@ -113,7 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: p['description'] ?? 'Monthly Tuition',
                     subtitle: [
                       if (date != null) DateFormat('MMM d, y').format(date),
-                      if (p['paymentMethod'] != null) _formatPaymentMethod(p['paymentMethod']),
+                      if (p['paymentMethod'] != null) _fmtMethod(p['paymentMethod']),
                     ].join(' · '),
                     amount: (p['amount'] as num?)?.toDouble() ?? 0,
                     last: last,
@@ -144,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _upcomingPaymentCard(DateTime? nextDate, double? rate) {
+  Widget _upcomingCard(DateTime? nextDate, double? rate) {
     if (nextDate == null && rate == null) return _emptyState('No payment info set yet');
 
     final daysUntil = nextDate?.difference(DateTime.now()).inDays;
@@ -258,7 +255,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     child: Center(child: Text(text, style: TextStyle(fontSize: 14, color: Colors.grey[400]))),
   );
 
-  String _formatPaymentMethod(String? method) {
+  // capitalize first letter of payment method string
+  String _fmtMethod(String? method) {
     if (method == null || method.isEmpty) return '-';
     return method[0].toUpperCase() + method.substring(1);
   }

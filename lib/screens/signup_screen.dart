@@ -6,23 +6,23 @@ class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  State<SignupScreen> createState() => _SignupState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _positionController = TextEditingController();
-  final _adminCodeController = TextEditingController();
+  final _firstN = TextEditingController();
+  final _lastN = TextEditingController();
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
+  final _position = TextEditingController();
+  final _code = TextEditingController();
 
-  String _selectedProgram = 'Pee Wee Kickers (ages 3 - 5)';
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _isAdminSignup = false;
-  bool _hiddenAdminCode = true;
+  String _program = 'Pee Wee Kickers (ages 3 - 5)';
+  bool _loading = false;
+  bool _hidePass = true;
+  bool _isAdmin = false;
+  bool _hideCode = true;
 
   final List<String> _programs = [
     'Pee Wee Kickers (ages 3 - 5)',
@@ -34,43 +34,49 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _positionController.dispose();
-    _adminCodeController.dispose();
+    _firstN.dispose();
+    _lastN.dispose();
+    _email.dispose();
+    _pass.dispose();
+    _position.dispose();
+    _code.dispose();
     super.dispose();
   }
 
   Future<void> _signUp() async {
     if (!_formKey.currentState!.validate()) return;
+    setState(() => _loading = true);
 
-    setState(() => _isLoading = true);
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final error = await authService.signUp(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-      firstName: _firstNameController.text.trim(),
-      lastName: _lastNameController.text.trim(),
-      program: _selectedProgram,
-      position: _isAdminSignup ? _positionController.text.trim() : null,
-      adminCode: _isAdminSignup ? _adminCodeController.text.trim() : null,
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final err = await auth.signUp(
+      email: _email.text.trim(),
+      password: _pass.text,
+      firstName: _firstN.text.trim(),
+      lastName: _lastN.text.trim(),
+      program: _program,
+      position: _isAdmin ? _position.text.trim() : null,
+      adminCode: _isAdmin ? _code.text.trim() : null,
     );
 
-    setState(() => _isLoading = false);
+    setState(() => _loading = false);
 
-    if (error != null && mounted) {
+    if (err != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: Color(0xFFCC0000),
-        ),
+        SnackBar(content: Text(err), backgroundColor: const Color(0xFFCC0000)),
       );
     } else if (mounted) {
       Navigator.pushReplacementNamed(context, '/home');
     }
+  }
+
+  // ensure password is strong
+  String? _validatePass(String? val) {
+    if (val == null || val.isEmpty) return 'Please enter a password';
+    if (val.length < 8) return 'Must be at least 8 characters';
+    if (!val.contains(RegExp(r'[A-Z]'))) return 'Must contain an uppercase letter';
+    if (!val.contains(RegExp(r'[0-9]'))) return 'Must contain a number';
+    if (!val.contains(RegExp(r'[!@#\$&*~%^()_\-+=]'))) return 'Must contain a special character';
+    return null;
   }
 
   @override
@@ -80,319 +86,170 @@ class _SignupScreenState extends State<SignupScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), // go back to login page
         ),
       ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 24.0),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // logo
                   Image.asset(
                     'assets/images/logo.jpeg',
                     height: 80,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 80,
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.sports_martial_arts,
-                          size: 60,
-                          color: Color(0xFFCC0000),
-                        ),
-                      );
-                    },
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 80,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.sports_martial_arts, size: 60, color: Color(0xFFCC0000)), // fallback icon if image load fails
+                    ),
                   ),
                   const SizedBox(height: 12),
-
                   const Text(
                     'Sign up for an account',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
 
-                  // first name field
-                  const Text(
-                    'First name',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('First name', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _firstNameController,
+                    controller: _firstN,
                     decoration: const InputDecoration(hintText: 'Enter first name'),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your first name';
-                      }
-                      return null;
-                    },
+                    validator: (v) => (v == null || v.isEmpty) ? 'Please enter your first name' : null,
                   ),
                   const SizedBox(height: 20),
 
-                  // last name field
-                  const Text(
-                    'Last name',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('Last name', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _lastNameController,
+                    controller: _lastN,
                     decoration: const InputDecoration(hintText: 'Enter last name'),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your last name';
-                      }
-                      return null;
-                    },
+                    validator: (v) => (v == null || v.isEmpty) ? 'Please enter your last name' : null,
                   ),
                   const SizedBox(height: 20),
 
-                  // account type dropdown
-                  const Text(
-                    "Account type",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('Account type', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<bool>(
-                    value: _isAdminSignup,
+                    value: _isAdmin,
                     decoration: const InputDecoration(
                       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     ),
                     items: const [
-                      DropdownMenuItem(value: false, child: Text("Student")),
-                      DropdownMenuItem(value: true, child: Text("Admin")),
+                      DropdownMenuItem(value: false, child: Text('Student')),
+                      DropdownMenuItem(value: true, child: Text('Admin')),
                     ],
-                    onChanged: (value) {
-                      setState(() => _isAdminSignup = value!);
-                    },
+                    onChanged: (v) => setState(() => _isAdmin = v!), // change what dropdown displays (responding to user clicks)
                   ),
                   const SizedBox(height: 20),
 
-                  // program dropdown (students only)
-                  if (!_isAdminSignup) ...[
-                    const Text(
-                      'Program',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
+                  if (!_isAdmin) ...[ // ask for program from students
+                    const Text('Program', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _selectedProgram,
+                      value: _program,
                       decoration: const InputDecoration(
                         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       ),
-                      items: _programs.map((program) {
-                        return DropdownMenuItem(value: program, child: Text(program));
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() => _selectedProgram = value!);
-                      },
+                      items: _programs.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                      onChanged: (v) => setState(() => _program = v!),
                     ),
                     const SizedBox(height: 20),
                   ],
 
-                  // position and admin code (admins only)
-                  if (_isAdminSignup) ...[
-                    const Text(
-                      "Position",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
+                  if (_isAdmin) ...[ // ask for position and code from admin
+                    const Text('Position', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     TextFormField(
-                      controller: _positionController,
-                      decoration: const InputDecoration(hintText: "eg. Front Desk Manager"),
-                      validator: (value) {
-                        if (_isAdminSignup && (value == null || value.isEmpty)) {
-                          return "Please enter your position";
-                        }
-                        return null;
-                      },
+                      controller: _position,
+                      decoration: const InputDecoration(hintText: 'eg. Front Desk Manager'),
+                      validator: (v) => (_isAdmin && (v == null || v.isEmpty)) ? 'Please enter your position' : null,
                     ),
                     const SizedBox(height: 20),
 
-                    const Text(
-                      "Admin Code",
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
+                    const Text('Admin Code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 8),
                     TextFormField(
-                      controller: _adminCodeController,
-                      obscureText: _hiddenAdminCode,
+                      controller: _code,
+                      obscureText: _hideCode,
                       decoration: InputDecoration(
-                        hintText: "Enter admin code",
+                        hintText: 'Enter admin code',
                         suffixIcon: IconButton(
-                          icon: Icon(
-                            _hiddenAdminCode
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          onPressed: () {
-                            setState(() => _hiddenAdminCode = !_hiddenAdminCode);
-                          },
+                          icon: Icon(_hideCode ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                          onPressed: () => setState(() => _hideCode = !_hideCode),
                         ),
                       ),
-                      validator: (value) {
-                        if (_isAdminSignup && (value == null || value.isEmpty)) {
-                          return "Please enter the admin code";
-                        }
-                        return null;
-                      },
+                      validator: (v) => (_isAdmin && (v == null || v.isEmpty)) ? 'Please enter the admin code' : null,
                     ),
                     const SizedBox(height: 20),
                   ],
 
-                  // email
-                  const Text(
-                    'Email',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('Email', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _emailController,
+                    controller: _email,
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(hintText: 'Enter your email'),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Please enter a valid email';
-                      }
+                    validator: (v) { // ensure valid email so TMA can send emails in the future (extensibility)
+                      if (v == null || v.isEmpty) return 'Please enter your email';
+                      if (!v.contains('@')) return 'Please enter a valid email';
                       return null;
                     },
                   ),
                   const SizedBox(height: 20),
 
-                  // password
-                  const Text(
-                    'Password',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
+                  const Text('Password', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
+                    controller: _pass,
+                    obscureText: _hidePass,
                     decoration: InputDecoration(
                       hintText: 'Create a password',
+                      helperText: 'Requirements: 8 chars, 1 uppercase, 1 number, 1 special character',
+                      helperMaxLines: 2,
                       suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
+                        icon: Icon(_hidePass ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        onPressed: () => setState(() => _hidePass = !_hidePass),
                       ),
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter a password';
-                      }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
-                      }
-                      return null;
-                    },
+                    validator: _validatePass,
                   ),
                   const SizedBox(height: 32),
 
-                  // sign up button
+                  // sign up button > home page
                   SizedBox(
                     height: 60,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _signUp,
+                      onPressed: _loading ? null : _signUp,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFCC0000),
                         foregroundColor: Colors.white,
                       ),
-                      child: _isLoading
+                      child: _loading
                           ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
+                        height: 20, width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                       )
-                          : const Text(
-                        'Sign up',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                          : const Text('Sign up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
-                  const SizedBox(height: 24),
 
-                  // login link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Already have an account? '),
+                      const Text('Already have an account? '), // link text to login screen
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          'Login',
-                          style: TextStyle(
-                            color: Color(0xFFCC0000),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        child: const Text('Login', style: TextStyle(color: Color(0xFFCC0000), fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
-
-                  // divider
-                  const Row(
-                    children: [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('or'),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // facebook signup button
-                  SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Facebook sign up coming soon!'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.facebook, color: Color(0xFF1877F2)),
-                      label: const Text(
-                        'Sign up with Facebook',
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.grey[300]!),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

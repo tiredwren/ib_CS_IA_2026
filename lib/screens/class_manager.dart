@@ -15,12 +15,12 @@ class ClassManagementScreen extends StatefulWidget {
 
 class _ClassManagementScreenState extends State<ClassManagementScreen> {
   bool _loading = false;
-  List<UserModel> _studEnrolled = [];
+  List<UserModel> _enrolled = [];
   // pending: requested but not yet confirmed by admin
-  List<UserModel> _studPending = [];
-  // waitlisted: class is full, ordered by waitlistPosition field
-  List<_WaitlistEntry> _studWait = [];
-  int _currEnrolled = 0;
+  List<UserModel> _pending = [];
+  // waitlisted: class full, sorted by waitlistPosition
+  List<_WaitEntry> _waitlist = [];
+  int _enrolledCount = 0;
 
   @override
   void initState() {
@@ -31,44 +31,40 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   Future<void> _loadStudents() async {
     setState(() => _loading = true);
     try {
-      final enrollmentsSnapshot = await FirebaseFirestore.instance
+      final snap = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('eventId', isEqualTo: widget.event.id)
           .where('isActive', isEqualTo: true)
           .get();
 
-      List<UserModel> enrolled = [];
-      List<UserModel> pending = [];
-      List<_WaitlistEntry> waitlisted = [];
+      final enrolled = <UserModel>[];
+      final pending = <UserModel>[];
+      final waitlisted = <_WaitEntry>[];
 
-      for (var enrollmentDoc in enrollmentsSnapshot.docs) {
-        final enrollment = EnrollmentModel.fromFirestore(enrollmentDoc);
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(enrollment.userId)
-            .get();
+      for (final enrDoc in snap.docs) {
+        final enr = EnrollmentModel.fromFirestore(enrDoc);
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(enr.userId).get();
         if (!userDoc.exists) continue;
         final user = UserModel.fromFirestore(userDoc);
 
-        if (enrollment.status == 'enrolled') {
+        if (enr.status == 'enrolled') {
           enrolled.add(user);
-        } else if (enrollment.status == 'pending') {
+        } else if (enr.status == 'pending') {
           pending.add(user);
-        } else if (enrollment.status == 'waitlisted') {
-          // read position to sort and display order correctly
-          final pos = enrollmentDoc.data()['waitlistPosition'] as int? ?? 0;
-          waitlisted.add(_WaitlistEntry(user: user, position: pos, docId: enrollmentDoc.id));
+        } else if (enr.status == 'waitlisted') {
+          final pos = enrDoc.data()['waitlistPosition'] as int? ?? 0;
+          waitlisted.add(_WaitEntry(user: user, position: pos, docId: enrDoc.id));
         }
       }
 
-      // sort waitlist by position so admin sees requests in the order they came in
+      // sort waitlist by position so admin sees order requests came in
       waitlisted.sort((a, b) => a.position.compareTo(b.position));
 
       setState(() {
-        _studEnrolled = enrolled;
-        _studPending = pending;
-        _studWait = waitlisted;
-        _currEnrolled = enrolled.length;
+        _enrolled = enrolled;
+        _pending = pending;
+        _waitlist = waitlisted;
+        _enrolledCount = enrolled.length;
         _loading = false;
       });
     } catch (e) {
@@ -81,7 +77,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     }
   }
 
-  // confirm pending request into the class or onto the waitlist if full
+  // confirm pending request -- enroll directly or waitlist if class is full
   Future<void> _confirmPending(UserModel student) async {
     try {
       final snap = await FirebaseFirestore.instance
@@ -94,13 +90,12 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
       if (snap.docs.isEmpty) return;
 
-      final full = _currEnrolled >= widget.event.maxCapacity;
+      final full = _enrolledCount >= widget.event.maxCap;
 
       if (full) {
-        final newPos = _studWait.length;
         await snap.docs.first.reference.update({
           'status': 'waitlisted',
-          'waitlistPosition': newPos,
+          'waitlistPosition': _waitlist.length,
         });
       } else {
         await snap.docs.first.reference.update({'status': 'enrolled'});
@@ -115,8 +110,8 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(full
-                ? '${student.firstName} added to waitlist'
-                : '${student.firstName} confirmed into class'),
+                ? '${student.firstN} added to waitlist'
+                : '${student.firstN} confirmed into class'),
           ),
         );
       }
@@ -144,7 +139,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${student.firstName}\'s request declined')),
+          SnackBar(content: Text('${student.firstN}\'s request declined')),
         );
       }
     } catch (e) {
@@ -154,9 +149,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     }
   }
 
-  Future<void> _removeStudent(UserModel student, String currentStatus) async {
+  Future<void> _removeStudent(UserModel student, String status) async {
     try {
-      final enrollmentSnapshot = await FirebaseFirestore.instance
+      final snap = await FirebaseFirestore.instance
           .collection('enrollments')
           .where('userId', isEqualTo: student.uid)
           .where('eventId', isEqualTo: widget.event.id)
@@ -164,22 +159,21 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           .limit(1)
           .get();
 
-      if (enrollmentSnapshot.docs.isEmpty) return;
-      await enrollmentSnapshot.docs.first.reference.update({
+      if (snap.docs.isEmpty) return;
+      await snap.docs.first.reference.update({
         'isActive': false,
         'removedAt': Timestamp.now(),
       });
 
-      if (currentStatus == 'enrolled') {
+      if (status == 'enrolled') {
         await FirebaseFirestore.instance
             .collection('events')
             .doc(widget.event.id)
             .update({'currentEnrollment': FieldValue.increment(-1)});
 
-        // promote first person on waitlist (pos 0) to enrolled
-        // then move everyone else up by decrementing their position
-        if (_studWait.isNotEmpty) {
-          final first = _studWait.first;
+        // promote first waitlist student and shift remaining positions up
+        if (_waitlist.isNotEmpty) {
+          final first = _waitlist.first;
           await FirebaseFirestore.instance
               .collection('enrollments')
               .doc(first.docId)
@@ -190,12 +184,11 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
               .doc(widget.event.id)
               .update({'currentEnrollment': FieldValue.increment(1)});
 
-          // move remaining waitlist positions up
-          for (int i = 1; i < _studWait.length; i++) {
+          for (int i = 1; i < _waitlist.length; i++) {
             await FirebaseFirestore.instance
                 .collection('enrollments')
-                .doc(_studWait[i].docId)
-                .update({'waitlistPosition': _studWait[i].position - 1});
+                .doc(_waitlist[i].docId)
+                .update({'waitlistPosition': _waitlist[i].position - 1});
           }
         }
       }
@@ -203,7 +196,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       await _loadStudents();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${student.firstName} removed from class')),
+          SnackBar(content: Text('${student.firstN} removed from class')),
         );
       }
     } catch (e) {
@@ -215,31 +208,30 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     }
   }
 
-  Future<void> _showAddStudentDialog() async {
-    final usersSnapshot = await FirebaseFirestore.instance
+  Future<void> _showAddStudent() async {
+    // fetch all students not already in this event
+    final usersSnap = await FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'student')
         .get();
 
-    final enrollmentsSnapshot = await FirebaseFirestore.instance
+    final enrSnap = await FirebaseFirestore.instance
         .collection('enrollments')
         .where('eventId', isEqualTo: widget.event.id)
         .where('isActive', isEqualTo: true)
         .get();
 
-    final enrolledUserIds = enrollmentsSnapshot.docs
-        .map((doc) => doc.data()['userId'] as String)
-        .toSet();
+    final enrIds = enrSnap.docs.map((d) => d.data()['userId'] as String).toSet();
 
-    final availableStudents = usersSnapshot.docs
-        .map((doc) => UserModel.fromFirestore(doc))
-        .where((user) => !enrolledUserIds.contains(user.uid))
+    final available = usersSnap.docs
+        .map((d) => UserModel.fromFirestore(d))
+        .where((u) => !enrIds.contains(u.uid))
         .toList()
-      ..sort((a, b) => a.lastName.compareTo(b.lastName));
+      ..sort((a, b) => a.lastN.compareTo(b.lastN));
 
     if (!mounted) return;
 
-    if (availableStudents.isEmpty) {
+    if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No students available to add')),
       );
@@ -251,8 +243,8 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AddStudentSheet(
-        students: availableStudents,
-        isFull: _currEnrolled >= widget.event.maxCapacity,
+        students: available,
+        isFull: _enrolledCount >= widget.event.maxCap,
         onAdd: (student) {
           Navigator.pop(context);
           _addStudent(student);
@@ -263,9 +255,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
   Future<void> _addStudent(UserModel student) async {
     try {
-      final full = _currEnrolled >= widget.event.maxCapacity;
+      final full = _enrolledCount >= widget.event.maxCap;
       final status = full ? 'waitlisted' : 'enrolled';
-      final newPos = full ? _studWait.length : 0;
+      final newPos = full ? _waitlist.length : 0;
 
       await FirebaseFirestore.instance.collection('enrollments').add({
         'userId': student.uid,
@@ -287,7 +279,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       await _loadStudents();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${student.firstName} ${student.lastName} was $status')),
+          SnackBar(content: Text('${student.firstN} ${student.lastN} was $status')),
         );
       }
     } catch (e) {
@@ -311,12 +303,12 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Remove ${student.firstName}?',
+                'Remove ${student.firstN}?',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
               Text(
-                'They\'ll be removed from this class. If there\'s a waitlist, the next student will be enrolled automatically.',
+                'They\'ll be removed from this class. If there\'s a waitlist, next student will be enrolled automatically.',
                 style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
               ),
               const SizedBox(height: 24),
@@ -359,7 +351,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final spotsLeft = widget.event.maxCapacity - _currEnrolled;
+    final spotsLeft = widget.event.maxCap - _enrolledCount;
     final full = spotsLeft <= 0;
 
     return Scaffold(
@@ -369,14 +361,8 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: false,
-        title: Text(
-          widget.event.name,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-        ),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1),
-        ),
+        title: Text(widget.event.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -385,62 +371,45 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ClassDetailsCard(
-              event: widget.event,
-              currentEnrollment: _currEnrolled,
-            ),
+            _DetailsCard(event: widget.event, enrolledCount: _enrolledCount),
             const SizedBox(height: 24),
 
             // pending requests section
-            if (_studPending.isNotEmpty) ...[
+            if (_pending.isNotEmpty) ...[
               Row(
                 children: [
-                  const Text(
-                    'Pending requests',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
+                  const Text('Pending requests', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(width: 8),
-                  Text(
-                    '${_studPending.length}',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                  ),
+                  Text('${_pending.length}', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
                 ],
               ),
               const SizedBox(height: 4),
               Text(
-                full ? 'Class is full, adding student to waitlist' : 'Admin has been notified of student\'s request to enrol!',
+                full ? 'Class is full, adding student to waitlist' : 'Admin has been notified of request to enrol',
                 style: TextStyle(fontSize: 12, color: Colors.grey[400]),
               ),
               const SizedBox(height: 12),
               Column(
-                children: _studPending
-                    .map((s) => _PendingCard(
+                children: _pending.map((s) => _PendingCard(
                   student: s,
                   onConfirm: () => _confirmPending(s),
                   onDecline: () => _declinePending(s),
-                ))
-                    .toList(),
+                )).toList(),
               ),
               const SizedBox(height: 24),
             ],
 
-            // enrolled section
+            // enrolled section header + add btn
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                const Text(
-                  'Enrolled',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
+                const Text('Enrolled', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 8),
-                Text(
-                  '$_currEnrolled of ${widget.event.maxCapacity}',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                ),
+                Text('$_enrolledCount of ${widget.event.maxCap}', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: _showAddStudentDialog,
+                  onPressed: _showAddStudent,
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Add student'),
                   style: TextButton.styleFrom(
@@ -455,10 +424,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
             if (!full) ...[
               const SizedBox(height: 4),
-              Text(
-                '$spotsLeft spot${spotsLeft == 1 ? '' : 's'} remaining',
-                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-              ),
+              Text('$spotsLeft spot${spotsLeft == 1 ? '' : 's'} remaining', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
             ] else ...[
               const SizedBox(height: 4),
               const Text('Class full', style: TextStyle(fontSize: 12, color: Color(0xFFCC0000))),
@@ -466,51 +432,36 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
             const SizedBox(height: 12),
 
-            _studEnrolled.isEmpty
+            _enrolled.isEmpty
                 ? _EmptyState(label: 'No students enrolled yet')
                 : Column(
-              children: _studEnrolled
-                  .map((s) => _StudentCard(
+              children: _enrolled.map((s) => _StudentCard(
                 student: s,
                 status: 'enrolled',
                 onRemove: () => _confirmRemove(s, 'enrolled'),
-              ))
-                  .toList(),
+              )).toList(),
             ),
 
-            // waitlist, ordered by position
-            if (_studWait.isNotEmpty) ...[
+            // waitlist ordered by position
+            if (_waitlist.isNotEmpty) ...[
               const SizedBox(height: 28),
               Row(
                 children: [
-                  const Text(
-                    'Waitlist',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
+                  const Text('Waitlist', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(width: 8),
-                  Text(
-                    '${_studWait.length}',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[500]),
-                  ),
+                  Text('${_waitlist.length}', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
                 ],
               ),
               const SizedBox(height: 4),
-              Text(
-                'Listed in order of request',
-                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-              ),
+              Text('Listed in order of request', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
               const SizedBox(height: 12),
               Column(
-                children: _studWait
-                    .asMap()
-                    .entries
-                    .map((e) => _StudentCard(
+                children: _waitlist.asMap().entries.map((e) => _StudentCard(
                   student: e.value.user,
                   status: 'waitlisted',
                   position: e.key + 1,
                   onRemove: () => _confirmRemove(e.value.user, 'waitlisted'),
-                ))
-                    .toList(),
+                )).toList(),
               ),
             ],
 
@@ -522,12 +473,12 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }
 }
 
-// small data class to carry waitlist position alongside the user
-class _WaitlistEntry {
+// carries waitlist position alongside user model
+class _WaitEntry {
   final UserModel user;
   final int position;
   final String docId;
-  _WaitlistEntry({required this.user, required this.position, required this.docId});
+  _WaitEntry({required this.user, required this.position, required this.docId});
 }
 
 class _PendingCard extends StatelessWidget {
@@ -535,42 +486,26 @@ class _PendingCard extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback onDecline;
 
-  const _PendingCard({
-    required this.student,
-    required this.onConfirm,
-    required this.onDecline,
-  });
+  const _PendingCard({required this.student, required this.onConfirm, required this.onDecline});
 
   @override
   Widget build(BuildContext context) {
-    final initials =
-    '${student.firstName[0]}${student.lastName.isNotEmpty ? student.lastName[0] : ''}'.toUpperCase();
+    final initials = '${student.firstN[0]}${student.lastN.isNotEmpty ? student.lastN[0] : ''}'.toUpperCase();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                shape: BoxShape.circle,
-              ),
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
               child: Center(
                 child: Text(
                   initials,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.blue.shade700,
-                  ),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.blue.shade700),
                 ),
               ),
             ),
@@ -579,32 +514,25 @@ class _PendingCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${student.firstName} ${student.lastName}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
-                  ),
+                  Text('${student.firstN} ${student.lastN}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
                   const SizedBox(height: 2),
-                  Text(
-                    '${student.rank} · ${student.program}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                  ),
+                  Text('${student.rank} · ${student.program}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 ],
               ),
             ),
-            // decline
+            // decline btn
             GestureDetector(
               onTap: onDecline,
               child: Container(
                 padding: const EdgeInsets.all(6),
                 margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
                 child: Icon(Icons.close, size: 16, color: Colors.grey[600]),
               ),
             ),
-            // confirm
+            // confirm btn
             GestureDetector(
               onTap: onConfirm,
               child: Container(
@@ -623,40 +551,39 @@ class _PendingCard extends StatelessWidget {
   }
 }
 
-class _ClassDetailsCard extends StatelessWidget {
+class _DetailsCard extends StatelessWidget {
   final EventModel event;
-  final int currentEnrollment;
-  const _ClassDetailsCard({required this.event, required this.currentEnrollment});
+  final int enrolledCount;
+  const _DetailsCard({required this.event, required this.enrolledCount});
 
   @override
   Widget build(BuildContext context) {
-    final timeStr =
-        '${DateFormat.jm().format(event.startTime)} – ${DateFormat.jm().format(event.endTime)}';
-    final ranksStr = event.requiredRanks.isEmpty ? 'All ranks' : event.requiredRanks.join(', ');
+    final timeStr = '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}';
+    final ranksStr = event.rankReq.isEmpty ? 'All ranks' : event.rankReq.join(', ');
 
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         children: [
-          _DetailRow(label: 'Time', value: timeStr),
-          _DetailRow(label: 'Instructor', value: event.instructor),
-          _DetailRow(label: 'Room', value: event.room),
-          _DetailRow(label: 'Ranks', value: ranksStr),
-          _DetailRow(label: 'Capacity', value: '$currentEnrollment / ${event.maxCapacity}'),
+          _Row(label: 'Time', value: timeStr),
+          _Row(label: 'Instructor', value: event.inst),
+          _Row(label: 'Room', value: event.room),
+          _Row(label: 'Ranks', value: ranksStr),
+          _Row(label: 'Capacity', value: '$enrolledCount / ${event.maxCap}'),
           if (event.price > 0)
-            _DetailRow(label: 'Price', value: '\$${event.price.toStringAsFixed(2)}', isLast: true),
+            _Row(label: 'Price', value: '\$${event.price.toStringAsFixed(2)}', isLast: true),
         ],
       ),
     );
   }
 }
 
-class _DetailRow extends StatelessWidget {
+class _Row extends StatelessWidget {
   final String label;
   final String value;
   final bool isLast;
-  const _DetailRow({required this.label, required this.value, this.isLast = false});
+  const _Row({required this.label, required this.value, this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
@@ -695,8 +622,7 @@ class _StudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials =
-    '${student.firstName[0]}${student.lastName.isNotEmpty ? student.lastName[0] : ''}'.toUpperCase();
+    final initials = '${student.firstN[0]}${student.lastN.isNotEmpty ? student.lastN[0] : ''}'.toUpperCase();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -709,23 +635,16 @@ class _StudentCard extends StatelessWidget {
             if (position != null)
               SizedBox(
                 width: 24,
-                child: Text(
-                  '$position',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[400]),
-                ),
+                child: Text('$position', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey[400])),
               ),
             Container(
-              width: 38,
-              height: 38,
+              width: 38, height: 38,
               decoration: BoxDecoration(
                 color: const Color(0xFFCC0000).withOpacity(0.08),
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: Text(
-                  initials,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFCC0000)),
-                ),
+                child: Text(initials, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFCC0000))),
               ),
             ),
             const SizedBox(width: 12),
@@ -733,15 +652,11 @@ class _StudentCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${student.firstName} ${student.lastName}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
-                  ),
+                  Text('${student.firstN} ${student.lastN}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
                   const SizedBox(height: 2),
-                  Text(
-                    '${student.rank} · ${student.program}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                  ),
+                  Text('${student.rank} · ${student.program}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 ],
               ),
             ),
@@ -776,8 +691,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
   @override
   Widget build(BuildContext context) {
     final filtered = widget.students
-        .where((s) =>
-        '${s.firstName} ${s.lastName} ${s.rank}'.toLowerCase().contains(_query.toLowerCase()))
+        .where((s) => '${s.firstN} ${s.lastN} ${s.rank}'.toLowerCase().contains(_query.toLowerCase()))
         .toList();
 
     return DraggableScrollableSheet(
@@ -796,8 +710,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
             Center(
               child: Container(
                 margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
+                width: 36, height: 4,
                 decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
               ),
             ),
@@ -808,6 +721,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                   const Expanded(
                     child: Text('Add student', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                   ),
+                  // badge when class is full -- student will be waitlisted
                   if (widget.isFull)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -831,7 +745,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                 onChanged: (v) => setState(() => _query = v),
                 style: const TextStyle(fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'Search by name or rank…',
+                  hintText: 'Search by name or rank...',
                   hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
                   prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey[400]),
                   filled: true,
@@ -851,8 +765,7 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                 separatorBuilder: (_, __) => Divider(height: 1, indent: 68, color: Colors.grey[100]),
                 itemBuilder: (context, i) {
                   final s = filtered[i];
-                  final initials =
-                  '${s.firstName[0]}${s.lastName.isNotEmpty ? s.lastName[0] : ''}'.toUpperCase();
+                  final initials = '${s.firstN[0]}${s.lastN.isNotEmpty ? s.lastN[0] : ''}'.toUpperCase();
                   return InkWell(
                     onTap: () => widget.onAdd(s),
                     child: Padding(
@@ -860,16 +773,13 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                       child: Row(
                         children: [
                           Container(
-                            width: 38,
-                            height: 38,
+                            width: 38, height: 38,
                             decoration: BoxDecoration(
                               color: const Color(0xFFCC0000).withOpacity(0.08),
                               shape: BoxShape.circle,
                             ),
                             child: Center(
-                              child: Text(initials,
-                                  style: const TextStyle(
-                                      fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFCC0000))),
+                              child: Text(initials, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFFCC0000))),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -877,9 +787,8 @@ class _AddStudentSheetState extends State<_AddStudentSheet> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${s.firstName} ${s.lastName}',
-                                    style: const TextStyle(
-                                        fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+                                Text('${s.firstN} ${s.lastN}',
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
                                 const SizedBox(height: 2),
                                 Text('${s.rank} · ${s.program}',
                                     style: TextStyle(fontSize: 12, color: Colors.grey[500])),
