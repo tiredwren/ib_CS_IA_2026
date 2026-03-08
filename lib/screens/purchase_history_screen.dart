@@ -61,12 +61,68 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
     }
   }
 
-  Future<void> _setStatus(PurchaseModel purchase, String status) async {
+  Future<void> _setStatus(PurchaseModel purchase, String status, {String? paymentMethod}) async {
     await FirebaseFirestore.instance
         .collection('purchases')
         .doc(purchase.id)
-        .update({'status': status});
+        .update({
+      'status': status,
+      // only write paymentMethod when completing, not for pending/cancelled
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+    });
     await _load();
+  }
+
+  // payment method only meaningful when completing a purchase
+  void _showPaymentMethodPicker(BuildContext ctx, PurchaseModel purchase) {
+    const methods = ['Cash', 'Card', 'Check', 'Other'];
+    Navigator.pop(ctx);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx2) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const Text('Payment method', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(purchase.prodName, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+            const SizedBox(height: 20),
+            ...methods.map((method) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pop(ctx2);
+                  _setStatus(purchase, 'completed', paymentMethod: method.toLowerCase());
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(method, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                ),
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showStatusPicker(PurchaseModel purchase) {
@@ -112,8 +168,15 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
     final current = purchase.status == status;
     return GestureDetector(
       onTap: () {
-        Navigator.pop(ctx);
-        if (!current) _setStatus(purchase, status);
+        if (!current) {
+          // prompt for payment method before marking complete
+          if (status == 'completed') {
+            _showPaymentMethodPicker(ctx, purchase);
+          } else {
+            Navigator.pop(ctx);
+            _setStatus(purchase, status);
+          }
+        }
       },
       child: Container(
         width: double.infinity,

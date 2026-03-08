@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
 class AddEventScreen extends StatefulWidget {
   final DateTime selectedDate;
   const AddEventScreen({super.key, required this.selectedDate});
@@ -19,6 +18,7 @@ class _AddEventState extends State<AddEventScreen> {
 
   String _room = 'Room A';
   String _type = 'Class';
+  String _ageG = 'All';
   List<String> _ranks = [];
   List<String> _days = [];
   TimeOfDay _start = const TimeOfDay(hour: 9, minute: 0);
@@ -26,13 +26,39 @@ class _AddEventState extends State<AddEventScreen> {
   bool _loading = false;
 
   final List<String> _rooms = ['Room A', 'Room B', 'Room C'];
-  final List<String> _types = ['Class', 'Workshop', 'Tournament', 'Event'];
-  // short labels for day toggles, full names stored in _days
-  final List<String> _daysShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  final List<String> _daysFull = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  final List<String> _types = [
+    'Class',
+    'Workshop',
+    'Tournament',
+    'Event'
+  ];
+  final List<String> _ageGroups = ['All', 'Youth', 'Adult'];
+  final List<String> _daysShort = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun'
+  ];
+  final List<String> _daysFull = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
   final List<String> _allRanks = [
-    'White Belt', 'Yellow Belt', 'Green Belt',
-    'Blue Belt', 'Brown Belt', 'Red Belt', 'Black Belt',
+    'White Belt',
+    'Yellow Belt',
+    'Green Belt',
+    'Blue Belt',
+    'Brown Belt',
+    'Red Belt',
+    'Black Belt',
   ];
 
   @override
@@ -64,20 +90,26 @@ class _AddEventState extends State<AddEventScreen> {
             dayPeriodColor: const Color(0xFFF5F5F5),
             dayPeriodTextColor: Colors.black87,
             entryModeIconColor: Colors.grey,
-            helpTextStyle: const TextStyle(color: Colors.black54, fontSize: 12, letterSpacing: 1),
+            helpTextStyle: const TextStyle(
+                color: Colors.black54,
+                fontSize: 12,
+                letterSpacing: 1),
           ),
         ),
         child: child!,
       ),
     );
-    if (picked != null) setState(() => isStart ? _start = picked : _end = picked);
+    if (picked != null) {
+      setState(() => isStart ? _start = picked : _end = picked);
+    }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_days.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one day')),
+        const SnackBar(
+            content: Text('Please select at least one day')),
       );
       return;
     }
@@ -86,24 +118,33 @@ class _AddEventState extends State<AddEventScreen> {
 
     try {
       final startDT = DateTime(
-        widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day,
-        _start.hour, _start.minute,
+        widget.selectedDate.year,
+        widget.selectedDate.month,
+        widget.selectedDate.day,
+        _start.hour,
+        _start.minute,
       );
       final endDT = DateTime(
-        widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day,
-        _end.hour, _end.minute,
+        widget.selectedDate.year,
+        widget.selectedDate.month,
+        widget.selectedDate.day,
+        _end.hour,
+        _end.minute,
       );
 
-      // validate time range before writing
       if (!endDT.isAfter(startDT)) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('End time must be after start time')),
+          const SnackBar(
+              content:
+              Text('End time must be after start time')),
         );
         return;
       }
 
-      await FirebaseFirestore.instance.collection('events').add({
+      await FirebaseFirestore.instance
+          .collection('events')
+          .add({
         'name': _nameCtrl.text.trim(),
         'type': _type,
         'startTime': Timestamp.fromDate(startDT),
@@ -121,6 +162,8 @@ class _AddEventState extends State<AddEventScreen> {
         'startMinute': _start.minute,
         'endHour': _end.hour,
         'endMinute': _end.minute,
+        // stored so calendar can filter eligible students by age group
+        'ageGroup': _ageG,
       });
 
       if (mounted) {
@@ -148,8 +191,12 @@ class _AddEventState extends State<AddEventScreen> {
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: false,
-        title: const Text('Create class', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-        bottom: const PreferredSize(preferredSize: Size.fromHeight(1), child: Divider(height: 1)),
+        title: const Text('Create class',
+            style: TextStyle(
+                fontSize: 17, fontWeight: FontWeight.w600)),
+        bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(1),
+            child: Divider(height: 1)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -158,24 +205,31 @@ class _AddEventState extends State<AddEventScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              Text('Days', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Days',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 10),
-              // day toggle row -- stores full name, displays abbreviated
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
                 children: List.generate(_daysShort.length, (i) {
                   final full = _daysFull[i];
                   final short = _daysShort[i];
                   final sel = _days.contains(full);
                   return GestureDetector(
                     onTap: () => setState(() =>
-                    sel ? _days.remove(full) : _days.add(full)),
+                    sel
+                        ? _days.remove(full)
+                        : _days.add(full)),
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 40, height: 40,
+                      duration:
+                      const Duration(milliseconds: 150),
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: sel ? const Color(0xFFCC0000) : const Color(0xFFF0F0F0),
+                        color: sel
+                            ? const Color(0xFFCC0000)
+                            : const Color(0xFFF0F0F0),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -184,7 +238,9 @@ class _AddEventState extends State<AddEventScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: sel ? Colors.white : Colors.grey[600],
+                            color: sel
+                                ? Colors.white
+                                : Colors.grey[600],
                           ),
                         ),
                       ),
@@ -198,22 +254,38 @@ class _AddEventState extends State<AddEventScreen> {
                 children: [
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
                       children: [
-                        Text('Start time', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                        Text('Start time',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[500])),
                         const SizedBox(height: 10),
                         GestureDetector(
                           onTap: () => _pickTime(true),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                            padding:
+                            const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
-                              borderRadius: BorderRadius.circular(5),
+                              color:
+                              const Color(0xFFF5F5F5),
+                              borderRadius:
+                              BorderRadius.circular(5),
                             ),
                             child: Row(
                               children: [
-                                Expanded(child: Text(_start.format(context), style: const TextStyle(fontSize: 14))),
-                                Icon(Icons.access_time, size: 15, color: Colors.grey[400]),
+                                Expanded(
+                                    child: Text(
+                                        _start
+                                            .format(context),
+                                        style: const TextStyle(
+                                            fontSize: 14))),
+                                Icon(Icons.access_time,
+                                    size: 15,
+                                    color: Colors.grey[400]),
                               ],
                             ),
                           ),
@@ -224,22 +296,37 @@ class _AddEventState extends State<AddEventScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
                       children: [
-                        Text('End time', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+                        Text('End time',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[500])),
                         const SizedBox(height: 10),
                         GestureDetector(
                           onTap: () => _pickTime(false),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                            padding:
+                            const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
-                              borderRadius: BorderRadius.circular(5),
+                              color:
+                              const Color(0xFFF5F5F5),
+                              borderRadius:
+                              BorderRadius.circular(5),
                             ),
                             child: Row(
                               children: [
-                                Expanded(child: Text(_end.format(context), style: const TextStyle(fontSize: 14))),
-                                Icon(Icons.access_time, size: 15, color: Colors.grey[400]),
+                                Expanded(
+                                    child: Text(
+                                        _end.format(context),
+                                        style: const TextStyle(
+                                            fontSize: 14))),
+                                Icon(Icons.access_time,
+                                    size: 15,
+                                    color: Colors.grey[400]),
                               ],
                             ),
                           ),
@@ -251,29 +338,63 @@ class _AddEventState extends State<AddEventScreen> {
               ),
               const SizedBox(height: 12),
 
-              Text('Class name', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Class name',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
-              _field(controller: _nameCtrl, hint: 'eg. Advanced Sparring (optional)'),
+              _field(
+                  controller: _nameCtrl,
+                  hint: 'eg. Advanced Sparring (optional)'),
               const SizedBox(height: 16),
-              Text('Instructor', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Instructor',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
               _field(
                 controller: _instructorCtrl,
                 hint: 'eg. SBN Lisa',
-                validator: (v) => (v == null || v.isEmpty) ? 'Please enter instructor name' : null,
+                validator: (v) => (v == null || v.isEmpty)
+                    ? 'Please enter instructor name'
+                    : null,
               ),
               const SizedBox(height: 12),
 
-              Text('Type', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Type',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
-              _drop<String>(value: _type, items: _types, onChanged: (v) => setState(() => _type = v!)),
+              _drop<String>(
+                  value: _type,
+                  items: _types,
+                  onChanged: (v) =>
+                      setState(() => _type = v!)),
               const SizedBox(height: 16),
-              Text('Room', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+
+              Text('Age group',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
-              _drop<String>(value: _room, items: _rooms, onChanged: (v) => setState(() => _room = v!)),
+              _drop<String>(
+                  value: _ageG,
+                  items: _ageGroups,
+                  onChanged: (v) =>
+                      setState(() => _ageG = v!)),
+              const SizedBox(height: 16),
+
+              Text('Room',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
+              const SizedBox(height: 6),
+              _drop<String>(
+                  value: _room,
+                  items: _rooms,
+                  onChanged: (v) =>
+                      setState(() => _room = v!)),
               const SizedBox(height: 12),
 
-              Text('Max capacity', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Max capacity',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
               _field(
                 controller: _capCtrl,
@@ -281,44 +402,62 @@ class _AddEventState extends State<AddEventScreen> {
                 keyboardType: TextInputType.number,
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Required';
-                  if ((int.tryParse(v) ?? 0) <= 0) return 'Enter a valid number';
+                  if ((int.tryParse(v) ?? 0) <= 0)
+                    return 'Enter a valid number';
                   return null;
                 },
               ),
               const SizedBox(height: 16),
-              Text('Price (optional)', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Price (optional)',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 6),
               _field(
                 controller: _priceCtrl,
                 hint: '0.00',
                 keyboardType: TextInputType.number,
-                prefix: const Text('\$  ', style: TextStyle(color: Colors.black54)),
+                prefix: const Text('\$  ',
+                    style: TextStyle(color: Colors.black54)),
               ),
               const SizedBox(height: 12),
 
-              Text('Required ranks', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+              Text('Required ranks',
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[500])),
               const SizedBox(height: 2),
-              Text('Leave empty for all ranks', style: TextStyle(fontSize: 12, color: Colors.grey[400])),
+              Text('Leave empty for all ranks',
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.grey[400])),
               const SizedBox(height: 12),
               Wrap(
-                spacing: 8, runSpacing: 8,
+                spacing: 8,
+                runSpacing: 8,
                 children: _allRanks.map((rank) {
                   final sel = _ranks.contains(rank);
                   return GestureDetector(
-                    onTap: () => setState(() => sel ? _ranks.remove(rank) : _ranks.add(rank)),
+                    onTap: () => setState(() => sel
+                        ? _ranks.remove(rank)
+                        : _ranks.add(rank)),
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      duration:
+                      const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
-                        color: sel ? const Color(0xFFCC0000) : const Color(0xFFF0F0F0),
-                        borderRadius: BorderRadius.circular(20),
+                        color: sel
+                            ? const Color(0xFFCC0000)
+                            : const Color(0xFFF0F0F0),
+                        borderRadius:
+                        BorderRadius.circular(20),
                       ),
                       child: Text(
                         rank,
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: sel ? Colors.white : Colors.grey[700],
+                          color: sel
+                              ? Colors.white
+                              : Colors.grey[700],
                         ),
                       ),
                     ),
@@ -334,15 +473,29 @@ class _AddEventState extends State<AddEventScreen> {
                   onPressed: _loading ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFCC0000),
-                    disabledBackgroundColor: const Color(0xFFCC0000).withOpacity(0.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    disabledBackgroundColor:
+                    const Color(0xFFCC0000)
+                        .withOpacity(0.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                        BorderRadius.circular(10)),
                   ),
                   child: _loading
                       ? const SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                        AlwaysStoppedAnimation<
+                            Color>(
+                            Colors.white)),
                   )
-                      : const Text('Create Event', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      : const Text('Create Event',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight:
+                          FontWeight.w600)),
                 ),
               ),
               const SizedBox(height: 32),
@@ -367,32 +520,58 @@ class _AddEventState extends State<AddEventScreen> {
       style: const TextStyle(fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+        hintStyle:
+        TextStyle(color: Colors.grey[400], fontSize: 14),
         prefix: prefix,
         filled: true,
         fillColor: const Color(0xFFF5F5F5),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide.none),
-        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1)),
-        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1)),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: BorderSide.none),
+        errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: const BorderSide(
+                color: Color(0xFFCC0000), width: 1)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: const BorderSide(
+                color: Color(0xFFCC0000), width: 1)),
+        focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: const BorderSide(
+                color: Color(0xFFCC0000), width: 1)),
       ),
     );
   }
 
-  Widget _drop<T>({required T value, required List<T> items, required void Function(T?) onChanged}) {
+  Widget _drop<T>(
+      {required T value,
+        required List<T> items,
+        required void Function(T?) onChanged}) {
     return DropdownButtonFormField<T>(
       value: value,
       onChanged: onChanged,
-      style: const TextStyle(fontSize: 14, color: Colors.black87),
+      style: const TextStyle(
+          fontSize: 14, color: Colors.black87),
       decoration: InputDecoration(
         filled: true,
         fillColor: const Color(0xFFF5F5F5),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(5), borderSide: const BorderSide(color: Color(0xFFCC0000), width: 1)),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(5),
+            borderSide: const BorderSide(
+                color: Color(0xFFCC0000), width: 1)),
       ),
-      items: items.map((item) => DropdownMenuItem(value: item, child: Text(item.toString()))).toList(),
+      items: items
+          .map((item) => DropdownMenuItem(
+          value: item, child: Text(item.toString())))
+          .toList(),
     );
   }
 }

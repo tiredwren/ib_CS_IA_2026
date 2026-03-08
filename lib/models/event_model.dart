@@ -14,11 +14,12 @@ class EventModel {
   final String? reqs;
   final String room;
   final List<String> days;
-  // separated for name
+  // separated for name formatting
   final int startHour;
   final int startMinute;
   final int endHour;
   final int endMinute;
+  final String age; // "youth","adult","all"
 
   EventModel({
     required this.id,
@@ -38,6 +39,7 @@ class EventModel {
     this.endHour = 0,
     this.startMinute = 0,
     this.endMinute = 0,
+    this.age = 'All',
   });
 
   factory EventModel.fromFirestore(DocumentSnapshot doc) {
@@ -46,8 +48,12 @@ class EventModel {
       id: doc.id,
       name: data['name'] ?? '',
       type: data['type'] ?? '',
-      startTime: data['startTime'] != null ? (data['startTime'] as Timestamp).toDate() : DateTime.now(),
-      endTime: data['endTime'] != null ? (data['endTime'] as Timestamp).toDate() : DateTime.now(),
+      startTime: data['startTime'] != null
+          ? (data['startTime'] as Timestamp).toDate()
+          : DateTime.now(),
+      endTime: data['endTime'] != null
+          ? (data['endTime'] as Timestamp).toDate()
+          : DateTime.now(),
       inst: data['instructor'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
       maxCap: data['maxCapacity'] ?? 0,
@@ -56,10 +62,11 @@ class EventModel {
       reqs: data['requirements'],
       room: data['room'] ?? 'Room A',
       days: List<String>.from(data['daysOfWeek'] ?? []),
-      startHour: data["startHour"] ?? 9,
-      startMinute: data["startMinute"] ?? 0,
-      endHour: data["endHour"] ?? 10,
-      endMinute: data["endMinute"] ?? 0,
+      startHour: data['startHour'] ?? 9,
+      startMinute: data['startMinute'] ?? 0,
+      endHour: data['endHour'] ?? 10,
+      endMinute: data['endMinute'] ?? 0,
+      age: data['ageGroup'] ?? 'All',
     );
   }
 
@@ -77,12 +84,15 @@ class EventModel {
       'requirements': reqs,
       'room': room,
       'daysOfWeek': days,
+      'ageGroup': age,
     };
   }
 
-  bool eligible(String userRank) {
-    if (rankReq.isEmpty) return true;
-    return rankReq.contains(userRank);
+  // check if user is eligible based on rank and age group
+  bool eligible(String userRank, String userAge) {
+    final rankOk = rankReq.isEmpty || rankReq.contains(userRank);
+    final ageOk = age == 'All' || age == userAge;
+    return rankOk && ageOk;
   }
 
   bool get isFull => currEnrollment >= maxCap;
@@ -98,17 +108,21 @@ class EventModel {
       'Sunday': 'Su',
     };
 
-    final days = this.days.map((day) => dayAbbreviations[day] ?? day).join('/');
-    final startTimeStr = _timeFormatting(DateTime(0, 0, 0, startHour, startMinute));
-    final endTimeStr = _timeFormatting(DateTime(0, 0, 0, endHour, endMinute));
+    final days =
+    this.days.map((day) => dayAbbreviations[day] ?? day).join('/');
+    final startTimeStr =
+    _timeFormatting(DateTime(0, 0, 0, startHour, startMinute));
+    final endTimeStr =
+    _timeFormatting(DateTime(0, 0, 0, endHour, endMinute));
     final timeRange = '$startTimeStr-$endTimeStr';
 
-    // name together for card formatting
     return name.isEmpty ? '$days $timeRange' : '$days $timeRange $name';
   }
 
   String _timeFormatting(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final hour = time.hour > 12
+        ? time.hour - 12
+        : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.hour >= 12 ? 'PM' : 'AM';
     return time.minute == 0 ? '$hour$period' : '$hour:$minute$period';

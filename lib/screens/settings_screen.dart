@@ -25,7 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadPayments() async {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final uid = auth.currentUserModel?.uid;
+    final uid = auth.currUser?.uid;
     if (uid == null) return;
 
     try {
@@ -49,7 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
     final isAdmin = auth.isAdmin;
 
     return Scaffold(

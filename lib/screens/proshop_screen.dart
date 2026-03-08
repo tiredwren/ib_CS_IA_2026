@@ -51,7 +51,7 @@ class _ProshopState extends State<Proshop> {
   // filter by category + rank eligibility for students
   List<ProductModel> get _filtered {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
     final isAdmin = auth.isAdmin;
 
     var list = _category == 'All'
@@ -148,7 +148,7 @@ class _ProshopState extends State<Proshop> {
 
   Future<void> _handlePurchase(ProductModel product) async {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
     if (user == null) return;
 
     String? selectedSize;
@@ -248,7 +248,7 @@ class _ProshopState extends State<Proshop> {
               icon: const Icon(Icons.history_outlined, size: 22),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => PurchaseHistoryScreen(userId: auth.currentUserModel!.uid)),
+                MaterialPageRoute(builder: (_) => PurchaseHistoryScreen(userId: auth.currUser!.uid)),
               ),
             ),
           ] else ...[

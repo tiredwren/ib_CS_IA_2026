@@ -27,7 +27,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
 
   Future<void> _init() async {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
 
     _uid = user?.uid;
     _currRank = user?.rank ?? 'White Belt';
@@ -86,7 +86,7 @@ class _RequirementSheetsState extends State<RequirementSheets> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
 
     // don't set rank until loaded (async)
     if (_rank == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));

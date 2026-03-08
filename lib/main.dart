@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+import 'package:true_martial_arts_app/services/notification_service.dart';
+import 'auth_wrapper.dart';
 import 'firebase_options.dart';
 import './services/auth_service.dart';
 import 'screens/login_screen.dart';
@@ -76,34 +78,6 @@ class MyApp extends StatelessWidget {
           '/home': (context) => const HomeScreen(),
         },
       ),
-    );
-  }
-}
-
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-
-    return StreamBuilder(
-      stream: authService.authStateChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        if (snapshot.hasData) {
-          return const HomeScreen();
-        }
-
-        return const LoginScreen();
-      },
     );
   }
 }

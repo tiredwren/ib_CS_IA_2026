@@ -706,6 +706,8 @@ const List<RankReqs> allRankRequirements = [
   ),
 ];
 
+// hand-defined hierarchy
+// integers used as sort keys
 const List<String> rankOrder = [
   'White Belt',
   'Advanced White Belt',

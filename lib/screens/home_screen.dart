@@ -25,6 +25,7 @@ class _HomeState extends State<HomeScreen> {
     // tab screens differ by role
     final screens = [
       const Calendar(),
+      // single isAdmin check for all role-based conditional UI rendering
       isAdmin ? const _RosterTab() : const RequirementSheets(),
       const Proshop(),
     ];

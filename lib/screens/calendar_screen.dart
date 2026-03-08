@@ -23,13 +23,35 @@ class _CalendarState extends State<Calendar> {
   DateTime? _selected;
   Map<DateTime, List<EventModel>> _events = {};
   List<EventModel> _dayEvents = [];
-  bool _loading = true;
+
+  // stream subscription so widget can cancel it on dispose
+  Stream<QuerySnapshot>? _eventsStream;
+  Stream<QuerySnapshot>? _enrollmentsStream;
 
   @override
   void initState() {
     super.initState();
     _selected = _focused;
-    _loadEvents();
+    _setupStreams();
+  }
+
+  void _setupStreams() {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final user = auth.currUser;
+    if (user == null) return;
+
+    // listen to events collection in real time
+    _eventsStream =
+        FirebaseFirestore.instance.collection('events').snapshots();
+
+    if (!auth.isAdmin) {
+      // also listen to this student's enrollments in real time
+      _enrollmentsStream = FirebaseFirestore.instance
+          .collection('enrollments')
+          .where('userId', isEqualTo: user.uid)
+          .where('isActive', isEqualTo: true)
+          .snapshots();
+    }
   }
 
   // expand recurring event into individual calendar dates (90 day window)
@@ -49,8 +71,11 @@ class _CalendarState extends State<Calendar> {
 
     for (final day in event.days) {
       final weekday = toWeekday[day];
-      int daysTo = (weekday! - now.weekday + 7) % 7;
-      DateTime cur = DateTime(now.year, now.month, now.day).add(Duration(days: daysTo));
+      if (weekday == null) continue;
+      // modulus ensures daysTo is always positive (future date)
+      int daysTo = (weekday - now.weekday + 7) % 7;
+      DateTime cur = DateTime(now.year, now.month, now.day)
+          .add(Duration(days: daysTo));
       while (!cur.isAfter(stop)) {
         dates.add(cur);
         cur = cur.add(const Duration(days: 7));
@@ -59,66 +84,38 @@ class _CalendarState extends State<Calendar> {
     return dates;
   }
 
-  Future<void> _loadEvents() async {
-    setState(() => _loading = true);
+  // rebuild event map from fresh snapshot
+  Map<DateTime, List<EventModel>> _buildEventMap(
+      List<EventModel> allEvents,
+      Set<String> enrIds,
+      UserModel user,
+      bool isAdmin,
+      ) {
+    final Map<DateTime, List<EventModel>> byDate = {};
 
-    final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
-    final isAdmin = auth.isAdmin;
+    for (final event in allEvents) {
+      // admins see all events
+      // students see eligible + already enrolled
+      final show = isAdmin ||
+          event.eligible(user.rank, user.age) ||
+          enrIds.contains(event.id);
 
-    if (user == null) return;
-
-    try {
-      final snap = await FirebaseFirestore.instance.collection('events').get();
-      final Map<DateTime, List<EventModel>> byDate = {};
-
-      if (isAdmin) {
-        // admins see all events
-        for (final doc in snap.docs) {
-          final event = EventModel.fromFirestore(doc);
-          for (final date in _expandDates(event)) {
-            byDate[date] ??= [];
-            byDate[date]!.add(event);
-          }
+      if (show) {
+        for (final date in _expandDates(event)) {
+          byDate[date] ??= [];
+          byDate[date]!.add(event);
         }
-      } else {
-        // students only see eligible events + ones they're already enrolled in
-        final enrSnap = await FirebaseFirestore.instance
-            .collection('enrollments')
-            .where('userId', isEqualTo: user.uid)
-            .where('isActive', isEqualTo: true)
-            .get();
-        final enrIds = enrSnap.docs.map((d) => d.data()['eventId'] as String).toSet();
-
-        for (final doc in snap.docs) {
-          final event = EventModel.fromFirestore(doc);
-          if (event.eligible(user.rank) || enrIds.contains(event.id)) {
-            for (final date in _expandDates(event)) {
-              byDate[date] ??= [];
-              byDate[date]!.add(event);
-            }
-          }
-        }
-      }
-
-      setState(() {
-        _events = byDate;
-        _dayEvents = _getEventsForDay(_selected!);
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() => _loading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading events: $e')),
-        );
       }
     }
+    return byDate;
   }
 
   List<EventModel> _getEventsForDay(DateTime day) {
     return _events.entries
-        .where((e) => e.key.year == day.year && e.key.month == day.month && e.key.day == day.day)
+        .where((e) =>
+    e.key.year == day.year &&
+        e.key.month == day.month &&
+        e.key.day == day.day)
         .expand((e) => e.value)
         .toList();
   }
@@ -135,8 +132,10 @@ class _CalendarState extends State<Calendar> {
         await doc.reference.delete();
       }
 
-      await FirebaseFirestore.instance.collection('events').doc(event.id).delete();
-      await _loadEvents();
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event.id)
+          .delete();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -156,7 +155,8 @@ class _CalendarState extends State<Calendar> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
           child: Column(
@@ -165,12 +165,14 @@ class _CalendarState extends State<Calendar> {
             children: [
               Text(
                 'Delete "${event.name}"?',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
               Text(
                 'This will remove all student enrollments for this class.',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
+                style: TextStyle(
+                    fontSize: 14, color: Colors.grey[600], height: 1.4),
               ),
               const SizedBox(height: 24),
               Row(
@@ -180,10 +182,13 @@ class _CalendarState extends State<Calendar> {
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: Colors.grey[300]!),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding:
+                        const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.black87)),
+                      child: const Text('Cancel',
+                          style: TextStyle(color: Colors.black87)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -195,8 +200,10 @@ class _CalendarState extends State<Calendar> {
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFCC0000),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding:
+                        const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
                       ),
                       child: const Text('Delete'),
                     ),
@@ -210,7 +217,6 @@ class _CalendarState extends State<Calendar> {
     );
   }
 
-  // student taps class card -- show detail sheet with enroll/cancel btn
   void _showClassDetail(EventModel event, EnrollmentModel? enr) {
     showModalBottomSheet(
       context: context,
@@ -233,16 +239,18 @@ class _CalendarState extends State<Calendar> {
 
   Future<void> _requestEnrollment(EventModel event) async {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
+    final user = auth.currUser;
     if (user == null) return;
 
     try {
-      // check current capacity to determine initial status
-      final eventDoc = await FirebaseFirestore.instance.collection('events').doc(event.id).get();
-      final curr = (eventDoc.data()?['currentEnrollment'] as int?) ?? 0;
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event.id)
+          .get();
+      final curr =
+          (eventDoc.data()?['currentEnrollment'] as int?) ?? 0;
       final full = curr >= event.maxCap;
 
-      // calc waitlist position if class is full
       int waitPos = 0;
       if (full) {
         final waitSnap = await FirebaseFirestore.instance
@@ -263,8 +271,6 @@ class _CalendarState extends State<Calendar> {
         'waitlistPosition': full ? waitPos : 0,
       });
 
-      await _loadEvents();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -276,12 +282,14 @@ class _CalendarState extends State<Calendar> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
 
-  Future<void> _cancelRequest(EventModel event, EnrollmentModel enr) async {
+  Future<void> _cancelRequest(
+      EventModel event, EnrollmentModel enr) async {
     try {
       final snap = await FirebaseFirestore.instance
           .collection('enrollments')
@@ -294,12 +302,12 @@ class _CalendarState extends State<Calendar> {
       if (snap.docs.isEmpty) return;
 
       final doc = snap.docs.first;
-      final cancelPos = doc.data()['waitlistPosition'] as int? ?? 0;
+      final cancelPos =
+          doc.data()['waitlistPosition'] as int? ?? 0;
       final wasWait = enr.status == 'waitlisted';
 
       await doc.reference.update({'isActive': false});
 
-      // if was waitlisted, shift remaining positions up
       if (wasWait) {
         final behind = await FirebaseFirestore.instance
             .collection('enrollments')
@@ -311,12 +319,11 @@ class _CalendarState extends State<Calendar> {
         for (final d in behind.docs) {
           final pos = d.data()['waitlistPosition'] as int? ?? 0;
           if (pos > cancelPos) {
-            await d.reference.update({'waitlistPosition': pos - 1});
+            await d.reference
+                .update({'waitlistPosition': pos - 1});
           }
         }
       }
-
-      await _loadEvents();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -325,7 +332,8 @@ class _CalendarState extends State<Calendar> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -333,8 +341,83 @@ class _CalendarState extends State<Calendar> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
+    final user = auth.currUser;
     final isAdmin = auth.isAdmin;
 
+    if (user == null) {
+      return const Scaffold(
+          body: Center(child: CircularProgressIndicator()));
+    }
+
+    // use nested StreamBuilders so both events and enrollments
+    // trigger a rebuild when either changes in Firestore
+    return StreamBuilder<QuerySnapshot>(
+      stream: _eventsStream,
+      builder: (context, eventsSnap) {
+        if (eventsSnap.connectionState == ConnectionState.waiting &&
+            _events.isEmpty) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+
+        // rebuild event map whenever either stream emits
+        if (eventsSnap.hasData) {
+          final allEvents = eventsSnap.data!.docs
+              .map((d) => EventModel.fromFirestore(d))
+              .toList();
+
+          if (isAdmin) {
+            final newMap =
+            _buildEventMap(allEvents, {}, user, true);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _events = newMap;
+                  _dayEvents = _getEventsForDay(_selected!);
+                });
+              }
+            });
+          }
+        }
+
+        if (isAdmin) {
+          return _buildScaffold(isAdmin);
+        }
+
+        // student view: also stream enrollments
+        return StreamBuilder<QuerySnapshot>(
+          stream: _enrollmentsStream,
+          builder: (context, enrSnap) {
+            if (enrSnap.hasData && eventsSnap.hasData) {
+              final enrIds = enrSnap.data!.docs
+                  .map((d) =>
+              (d.data() as Map<String, dynamic>)['eventId']
+              as String)
+                  .toSet();
+
+              final allEvents = eventsSnap.data!.docs
+                  .map((d) => EventModel.fromFirestore(d))
+                  .toList();
+
+              final newMap =
+              _buildEventMap(allEvents, enrIds, user, false);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _events = newMap;
+                    _dayEvents = _getEventsForDay(_selected!);
+                  });
+                }
+              });
+            }
+            return _buildScaffold(isAdmin);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildScaffold(bool isAdmin) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -342,7 +425,9 @@ class _CalendarState extends State<Calendar> {
         foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: false,
-        title: const Text('Calendar', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        title: const Text('Calendar',
+            style:
+            TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
           child: Divider(height: 1),
@@ -355,7 +440,7 @@ class _CalendarState extends State<Calendar> {
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: () async {
-                    final res = await Navigator.push(
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => AddEventScreen(
@@ -363,34 +448,35 @@ class _CalendarState extends State<Calendar> {
                         ),
                       ),
                     );
-                    if (res == true) _loadEvents();
+                    // no manual reload needed; stream picks up new event
                   },
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Create class'),
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFFCC0000),
                     overlayColor: Colors.transparent,
-                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
             ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
+      body: Column(
         children: [
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: TableCalendar(
               key: ValueKey(_events.length),
-              firstDay: DateTime.now().subtract(const Duration(days: 365)),
+              firstDay:
+              DateTime.now().subtract(const Duration(days: 365)),
               lastDay: DateTime.now().add(const Duration(days: 365)),
               focusedDay: _focused,
               calendarFormat: _fmt,
-              selectedDayPredicate: (day) => isSameDay(_selected, day),
+              selectedDayPredicate: (day) =>
+                  isSameDay(_selected, day),
               eventLoader: _getEventsForDay,
               onDaySelected: (sel, focused) {
                 setState(() {
@@ -399,10 +485,12 @@ class _CalendarState extends State<Calendar> {
                   _dayEvents = _getEventsForDay(sel);
                 });
               },
-              onFormatChanged: (fmt) => setState(() => _fmt = fmt),
+              onFormatChanged: (fmt) =>
+                  setState(() => _fmt = fmt),
               calendarStyle: CalendarStyle(
                 todayDecoration: BoxDecoration(
-                  color: const Color(0xFFCC0000).withOpacity(0.4),
+                  color:
+                  const Color(0xFFCC0000).withOpacity(0.4),
                   shape: BoxShape.circle,
                 ),
                 selectedDecoration: const BoxDecoration(
@@ -426,12 +514,17 @@ class _CalendarState extends State<Calendar> {
           Expanded(
             child: _dayEvents.isEmpty
                 ? Center(
-              child: Text('No classes on this day', style: TextStyle(fontSize: 14, color: Colors.grey[400])),
+              child: Text('No classes on this day',
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[400])),
             )
                 : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              padding:
+              const EdgeInsets.fromLTRB(16, 12, 16, 16),
               itemCount: _dayEvents.length,
-              itemBuilder: (context, i) => _buildEventCard(_dayEvents[i], isAdmin),
+              itemBuilder: (context, i) =>
+                  _eventCard(_dayEvents[i], isAdmin),
             ),
           ),
         ],
@@ -439,12 +532,12 @@ class _CalendarState extends State<Calendar> {
     );
   }
 
-  Widget _buildEventCard(EventModel event, bool isAdmin) {
+  Widget _eventCard(EventModel event, bool isAdmin) {
     final auth = Provider.of<AuthService>(context, listen: false);
-    final user = auth.currentUserModel;
-    final timeStr = '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}';
+    final user = auth.currUser;
+    final timeStr =
+        '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}';
 
-    // async fetch enrollment status for badge display
     return FutureBuilder<DocumentSnapshot?>(
       future: FirebaseFirestore.instance
           .collection('enrollments')
@@ -460,7 +553,6 @@ class _CalendarState extends State<Calendar> {
             : null;
         final status = enr?.status;
 
-        // badge styling per status
         Color? badgeColor, badgeBorder, badgeText;
         String? badgeLabel;
 
@@ -496,43 +588,45 @@ class _CalendarState extends State<Calendar> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ClassManagementScreen(event: event),
+                  builder: (context) =>
+                      ClassManagementScreen(event: event),
                 ),
               );
-              _loadEvents();
+              // stream handles any class changes automatically
             }
                 : () => _showClassDetail(event, enr),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 68,
-                    child: Text(
-                      timeStr.replaceFirst(' ', '\n'),
-                      style: TextStyle(fontSize: 12, height: 1.5, color: Colors.grey[400]),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
                       children: [
                         Text(
                           event.getDispName(),
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87),
+                          style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${event.inst} · ${event.room}',
-                          style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500]),
                         ),
                         if (event.rankReq.isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Text(
                             event.rankReq.join(', '),
-                            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[400]),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -541,7 +635,9 @@ class _CalendarState extends State<Calendar> {
                           const SizedBox(height: 3),
                           Text(
                             '${event.currEnrollment}/${event.maxCap} students',
-                            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[400]),
                           ),
                         ],
                       ],
@@ -549,7 +645,8 @@ class _CalendarState extends State<Calendar> {
                   ),
                   if (badgeLabel != null && !isAdmin)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: badgeColor,
                         borderRadius: BorderRadius.circular(50),
@@ -557,7 +654,10 @@ class _CalendarState extends State<Calendar> {
                       ),
                       child: Text(
                         badgeLabel,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeText),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: badgeText),
                       ),
                     ),
                   if (isAdmin)
@@ -567,15 +667,20 @@ class _CalendarState extends State<Calendar> {
                         GestureDetector(
                           onTap: () => _confirmDelete(event),
                           child: Padding(
-                            padding: const EdgeInsets.only(left: 8, right: 4),
-                            child: Icon(Icons.delete_outline, size: 18, color: Colors.grey[350]),
+                            padding: const EdgeInsets.only(
+                                left: 8, right: 4),
+                            child: Icon(Icons.delete_outline,
+                                size: 18,
+                                color: Colors.grey[350]),
                           ),
                         ),
-                        Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
+                        Icon(Icons.chevron_right,
+                            size: 18, color: Colors.grey[350]),
                       ],
                     ),
                   if (!isAdmin && badgeLabel == null)
-                    Icon(Icons.chevron_right, size: 18, color: Colors.grey[350]),
+                    Icon(Icons.chevron_right,
+                        size: 18, color: Colors.grey[350]),
                 ],
               ),
             ),
@@ -586,7 +691,6 @@ class _CalendarState extends State<Calendar> {
   }
 }
 
-// bottom sheet shown to student when tapping a class card
 class _StudentClassSheet extends StatelessWidget {
   final EventModel event;
   final EnrollmentModel? enrollment;
@@ -602,14 +706,16 @@ class _StudentClassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeStr = '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}';
+    final timeStr =
+        '${DateFormat.jm().format(event.startTime)} - ${DateFormat.jm().format(event.endTime)}';
     final status = enrollment?.status;
     final full = event.currEnrollment >= event.maxCap;
 
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius:
+        BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
       child: Column(
@@ -618,25 +724,29 @@ class _StudentClassSheet extends StatelessWidget {
         children: [
           Center(
             child: Container(
-              width: 36, height: 4,
+              width: 36,
+              height: 4,
               margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2)),
             ),
           ),
-
-          Text(event.getDispName(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          Text(event.getDispName(),
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('${event.inst} · ${event.room}', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+          Text('${event.inst} · ${event.room}',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500])),
           const SizedBox(height: 20),
-
           _detail('Time', timeStr),
-          _detail('Capacity', '${event.currEnrollment}/${event.maxCap}${full ? ' · Full' : ''}'),
-          if (event.rankReq.isNotEmpty) _detail('Ranks', event.rankReq.join(', ')),
-          if (event.price > 0) _detail('Price', '\$${event.price.toStringAsFixed(2)}'),
-
+          _detail('Capacity',
+              '${event.currEnrollment}/${event.maxCap}${full ? ' · Full' : ''}'),
+          if (event.rankReq.isNotEmpty)
+            _detail('Ranks', event.rankReq.join(', ')),
+          if (event.price > 0)
+            _detail('Price', '\$${event.price.toStringAsFixed(2)}'),
           const SizedBox(height: 28),
-
-          // action btn changes based on enrollment status
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -645,11 +755,14 @@ class _StudentClassSheet extends StatelessWidget {
               onPressed: onRequest,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFCC0000),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(50)),
               ),
               child: Text(
                 full ? 'Join waitlist' : 'Request to join',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600),
               ),
             )
                 : status == 'enrolled'
@@ -657,23 +770,36 @@ class _StudentClassSheet extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(50),
-                border: Border.all(color: Colors.green.shade200),
+                borderRadius:
+                BorderRadius.circular(50),
+                border: Border.all(
+                    color: Colors.green.shade200),
               ),
               child: Text(
                 'Enrolled',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.green.shade700),
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green.shade700),
               ),
             )
                 : OutlinedButton(
               onPressed: onCancel,
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.grey[300]!),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                side: BorderSide(
+                    color: Colors.grey[300]!),
+                shape: RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(10)),
               ),
               child: Text(
-                status == 'waitlisted' ? 'Cancel waitlist request' : 'Cancel request',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
+                status == 'waitlisted'
+                    ? 'Cancel waitlist request'
+                    : 'Cancel request',
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87),
               ),
             ),
           ),
@@ -689,9 +815,14 @@ class _StudentClassSheet extends StatelessWidget {
         children: [
           SizedBox(
             width: 80,
-            child: Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 13, color: Colors.grey[500])),
           ),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 14, color: Colors.black87))),
+          Expanded(
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 14, color: Colors.black87))),
         ],
       ),
     );

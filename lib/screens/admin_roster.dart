@@ -5,6 +5,7 @@ import '../requirement_data.dart';
 import '../services/email_service.dart';
 import '../models/event_model.dart';
 import '../models/requirement_models.dart';
+import '../services/notification_service.dart';
 
 class AdminRosterView extends StatefulWidget {
   const AdminRosterView({super.key});
@@ -40,15 +41,19 @@ class _RosterState extends State<AdminRosterView> {
       final Map<String, List<String>> byEvent = {};
       final enrolledIds = <String>{};
       for (final doc in enrollSnap.docs) {
+        // no second pass through loop needed
         final d = doc.data();
         final eid = d['eventId'] as String? ?? '';
         final uid = d['userId'] as String? ?? '';
-        if (eid.isEmpty || uid.isEmpty) continue;
-        byEvent.putIfAbsent(eid, () => []).add(uid);
-        enrolledIds.add(uid);
+        if (eid.isNotEmpty && uid.isNotEmpty) {
+          byEvent.putIfAbsent(eid, () => []).add(uid);
+          enrolledIds.add(
+              uid); // set difference later used to find unenrolled students
+        }
       }
 
       // fetch all users into a map for quick lookup
+      // O(1) lookup by uid
       final usersSnap = await FirebaseFirestore.instance.collection('users').get();
       final Map<String, UserModel> userMap = {
         for (final d in usersSnap.docs) d.id: UserModel.fromFirestore(d)
@@ -58,21 +63,27 @@ class _RosterState extends State<AdminRosterView> {
       final rosters = <Roster>[];
       for (final event in events) {
         final uids = byEvent[event.id];
-        if (uids == null || uids.isEmpty) continue;
+        if (uids != null && uids.isNotEmpty) {
+          final students = uids
+              .where((uid) => userMap.containsKey(uid)) // prevents appearance of enrollment records with no matching user
+              .map((uid) => userMap[uid]!)
+              .toList()
+            // cascade operator sorts in place without reassigning
+            ..sort((a, b) =>
+                // rank string converted to integer index for comparison
+                rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank)));
 
-        final students = uids
-            .where((uid) => userMap.containsKey(uid))
-            .map((uid) => userMap[uid]!)
-            .toList()
-          ..sort((a, b) => rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank)));
-
-        rosters.add(Roster(event: event, students: students));
+          rosters.add(Roster(event: event, students: students));
+        }
       }
 
-      // sort rosters by the lowest rank present in each class
+      // sort rosters
       rosters.sort((a, b) {
         int minRank(Roster r) =>
+            // indexOf converts rank string into comparable integer
+            // based on rankOrder hierarchy defined in requirement_data.dart
             r.students.map((s) => rankOrder.indexOf(s.rank)).fold(999, (acc, i) => i < acc ? i : acc);
+        // order students lowest rank to highest rank (like on paper pretest sheets used in class)
         return minRank(a).compareTo(minRank(b));
       });
 
@@ -168,6 +179,11 @@ class _RosterState extends State<AdminRosterView> {
     await FirebaseFirestore.instance.collection('users').doc(student.uid).update({
       'nextPaymentDate': Timestamp.fromDate(next),
     });
+
+    // note: schedules on current device (admin's) not student's
+    // student's device reschedules on next login via _loadUser in auth_service
+    // full per-student push would require FCM server integration
+    await Notifs.schedRem(next);
 
     // send confirmation email, fire and forget
     await EmailService.paymentConfirmation(

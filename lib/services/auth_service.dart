@@ -1,44 +1,72 @@
-// helper for signin/signup/user doc creation
+// signin/signup/user doc creation
 
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import 'notification_service.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // secret code required to register an admin account
   static const String _adminCode = "424321438";
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   UserModel? _userModel;
-  UserModel? get currentUserModel => _userModel;
+  UserModel? get currUser => _userModel;
 
-  // listen to auth state on init, load user data when signed in
+  // active firestore subscription, cancelled on sign out
+  StreamSubscription<DocumentSnapshot>? _userSub;
+
   AuthService() {
     _auth.authStateChanges().listen((User? user) {
       if (user != null) {
-        _loadUser(user.uid);
+        _subscribe(user.uid);
       } else {
+        _unsub();
         _userModel = null;
         notifyListeners();
       }
     });
   }
 
-  // sign in with email + password
+  // live snapshot on user doc — reacts to any admin edit (nextPay, rank, etc.) without re-auth
+  void _subscribe(String uid) {
+    _unsub(); // drop any existing listener first
+
+    _userSub = _db.collection('users').doc(uid).snapshots().listen((doc) async {
+      if (!doc.exists) return;
+
+      final updated = UserModel.fromFirestore(doc);
+      final prevPay = _userModel?.nextPay;
+      _userModel = updated;
+
+      // only reschedule if nextPay changed, avoids redundant notif ops on unrelated updates
+      if (updated.role == 'student' && updated.nextPay != null) {
+        if (prevPay == null || prevPay != updated.nextPay) {
+          debugPrint('nextPay -> ${updated.nextPay}, rescheduling notif');
+          await Notifs.schedRem(updated.nextPay!);
+        }
+      }
+
+      notifyListeners();
+    }, onError: (e) => debugPrint('user stream error: $e'));
+  }
+
+  void _unsub() {
+    _userSub?.cancel();
+    _userSub = null;
+  }
+
   Future<String?> signIn(String email, String password) async {
     try {
-      final res = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      await _loadUser(res.user!.uid);
-      notifyListeners();
+      final res = await _auth.signInWithEmailAndPassword(email: email, password: password);
+      // eager subscribe in case authStateChanges fires after caller reads _userModel
+      _subscribe(res.user!.uid);
       return null;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') return 'No user found with this email.';
@@ -51,14 +79,15 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // sign up -- admin path requires valid admin code
+  // admin signup requires valid admin code
   Future<String?> signUp({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
-    String? program,   // students only
-    String? position,  // admins only
+    required String age,
+    String? program,  // students only
+    String? position, // admins only
     String? adminCode,
   }) async {
     try {
@@ -68,15 +97,12 @@ class AuthService extends ChangeNotifier {
         return "invalid admin code; please contact an administrator if there has been an issue.";
       }
 
-      final res = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final res = await _auth.createUserWithEmailAndPassword(email: email, password: password);
 
       UserModel newUser;
 
       if (isAdmin) {
-        // admin account -- store position in program field
+        // position stored in program field for admin accounts
         newUser = UserModel(
           uid: res.user!.uid,
           email: email,
@@ -89,7 +115,7 @@ class AuthService extends ChangeNotifier {
         );
       } else {
         if (program == null) return "program selection is required for students.";
-        // student account -- starts at white belt
+        // students start at white belt
         newUser = UserModel(
           uid: res.user!.uid,
           email: email,
@@ -103,9 +129,7 @@ class AuthService extends ChangeNotifier {
       }
 
       await _db.collection('users').doc(res.user!.uid).set(newUser.toMap());
-
-      _userModel = newUser;
-      notifyListeners();
+      _subscribe(res.user!.uid);
       return null;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'weak-password') return 'Password is too weak. Please use a stronger password.';
@@ -117,20 +141,8 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // fetch user doc from firestore and cache locally
-  Future<void> _loadUser(String uid) async {
-    try {
-      final doc = await _db.collection('users').doc(uid).get();
-      if (doc.exists) {
-        _userModel = UserModel.fromFirestore(doc);
-        notifyListeners();
-      }
-    } catch (e) {
-      print('error loading user: $e');
-    }
-  }
-
   Future<void> signOut() async {
+    _unsub();
     await _auth.signOut();
     _userModel = null;
     notifyListeners();
@@ -147,13 +159,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  // read from cache, avoids redundant fetches
   bool get isAdmin => _userModel?.role == 'admin';
 
-  // force re-fetch of user doc, e.g. after rank update
-  Future<void> refreshUserData() async {
-    if (currentUser != null) {
-      await _loadUser(currentUser!.uid);
-      notifyListeners();
-    }
+  // snapshot listener handles this automatically, but kept for explicit refresh eg. post rank update
+  Future<void> refresh() async {
+    if (currentUser != null) _subscribe(currentUser!.uid);
   }
 }

@@ -33,10 +33,9 @@ class EmailService {
     });
   }
 
-  // fire once and forget so failed email doesn't block purchase flow
   static Future<void> _post(String path, Map<String, dynamic> body) async {
-    try {
-      final res = await http.post(
+    try { // fire once and forget so failed email doesn't block purchase flow
+      final res = await http.post( // one line for entire request
         Uri.parse('$_base$path'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),

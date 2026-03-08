@@ -13,6 +13,7 @@ class UserModel {
   final DateTime? nextPay;
   final String? payMeth;
   final String? notes;
+  final String age; // youth or adult
 
   UserModel({
     required this.uid,
@@ -27,6 +28,7 @@ class UserModel {
     this.nextPay,
     this.payMeth,
     this.notes,
+    this.age = 'adult',
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
@@ -39,11 +41,13 @@ class UserModel {
       program: data['program'] ?? '',
       rank: data['rank'] ?? 'White Belt',
       role: data['role'] ?? 'student',
-      created: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      created:
+      (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       monthRate: (data['monthlyRate'] as num?)?.toDouble(),
       nextPay: (data['nextPaymentDate'] as Timestamp?)?.toDate(),
       payMeth: data['paymentMethod'] as String?,
       notes: data['notes'] as String?,
+      age: data['ageGroup'] ?? 'adult',
     );
   }
 
@@ -56,6 +60,7 @@ class UserModel {
       'rank': rank,
       'role': role,
       'createdAt': Timestamp.fromDate(created),
+      'ageGroup': age,
       if (monthRate != null) 'monthlyRate': monthRate,
       if (nextPay != null) 'nextPaymentDate': Timestamp.fromDate(nextPay!),
       if (payMeth != null) 'paymentMethod': payMeth,
