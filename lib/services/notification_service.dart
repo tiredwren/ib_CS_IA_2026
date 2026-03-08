@@ -35,16 +35,11 @@ class Notifs {
       return;
     }
 
-    debugPrint('exact alarms granted: $granted');
-
-    await _plugin.cancel(id: 1);
-
+    final remDate = nextPayDate.subtract(const Duration(days: 2));
     final now = DateTime.now();
-    final remDate = now.add(const Duration(minutes: 2));
     if (remDate.isBefore(now)) return;
 
     debugPrint('scheduling payment reminder for $remDate');
-    debugPrint('remDate: $remDate, now: ${DateTime.now()}, isFuture: ${remDate.isAfter(DateTime.now())}');
     await _plugin.zonedSchedule(
       id: 1, // can be cancelled/replaced
       title: 'TMA payment due soon',
